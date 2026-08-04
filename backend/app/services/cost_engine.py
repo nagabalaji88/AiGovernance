@@ -107,9 +107,7 @@ class CostEngine:
         breakdown.uncached_equivalent = self._uncached_equivalent(event, card, breakdown)
         return breakdown
 
-    def price_many(
-        self, events: list[UsageEvent], *, strict: bool = False
-    ) -> list[CostBreakdown]:
+    def price_many(self, events: list[UsageEvent], *, strict: bool = False) -> list[CostBreakdown]:
         return [self.price(e, strict=strict) for e in events]
 
     def estimate(
@@ -146,9 +144,7 @@ class CostEngine:
             costs[token_class] = quantize_cost(Decimal(count) * rate)
         return costs
 
-    def _uncached_equivalent(
-        self, event: UsageEvent, card: RateCard, actual: CostBreakdown
-    ) -> Decimal:
+    def _uncached_equivalent(self, event: UsageEvent, card: RateCard, actual: CostBreakdown) -> Decimal:
         """What this call would have cost with every cache disabled.
 
         Two savings sources are folded together here:

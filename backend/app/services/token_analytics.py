@@ -258,9 +258,7 @@ def analyse(
         composition.few_shot += t.few_shot_tokens
         composition.tool_definitions += t.tool_definition_tokens
         composition.rag_context += t.rag_tokens
-        named = (
-            t.system_prompt_tokens + t.few_shot_tokens + t.tool_definition_tokens + t.rag_tokens
-        )
+        named = t.system_prompt_tokens + t.few_shot_tokens + t.tool_definition_tokens + t.rag_tokens
         # Whatever the SDK did not label is residual context. We split it
         # heuristically between history and the user's own message using turn
         # index: turn 0 has no history by definition.
@@ -313,8 +311,7 @@ def analyse(
         report.context_distribution, static_tokens, prompt_total, turn_context, window_size
     )
     report.slices = {
-        dim: sorted(buckets.values(), key=lambda s: s.cost, reverse=True)
-        for dim, buckets in slices.items()
+        dim: sorted(buckets.values(), key=lambda s: s.cost, reverse=True) for dim, buckets in slices.items()
     }
     return report
 

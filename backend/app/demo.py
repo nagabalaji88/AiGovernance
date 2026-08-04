@@ -172,14 +172,19 @@ def seed(
                 history = 400 * turn
                 rag = rng.randint(2500, 4200)
                 count += _add(
-                    store, organization_id,
+                    store,
+                    organization_id,
                     _event(
-                        provider=Provider.OPENAI, model="gpt-4.1",
-                        team="support-platform", feature="support-chat",
+                        provider=Provider.OPENAI,
+                        model="gpt-4.1",
+                        team="support-platform",
+                        feature="support-chat",
                         occurred_at=moment + timedelta(minutes=rng.randint(0, 59)),
                         input_tokens=1800 + history + rag,
                         output_tokens=rng.randint(180, 420),
-                        system_prompt_tokens=1800, rag_tokens=rag, rag_chunks=10,
+                        system_prompt_tokens=1800,
+                        rag_tokens=rag,
+                        rag_chunks=10,
                         conversation_id=f"conv-{day_offset}-{rng.randint(1, 60)}",
                         conversation_turn=turn,
                         latency_ms=rng.randint(700, 2100),
@@ -190,12 +195,16 @@ def seed(
             # ---- FAQ endpoint: heavy prompt repetition, no cache ----
             for _ in range(int(rng.gauss(9, 3) * weight)):
                 count += _add(
-                    store, organization_id,
+                    store,
+                    organization_id,
                     _event(
-                        provider=Provider.OPENAI, model="gpt-4.1",
-                        team="support-platform", feature="faq-answering",
+                        provider=Provider.OPENAI,
+                        model="gpt-4.1",
+                        team="support-platform",
+                        feature="faq-answering",
                         occurred_at=moment + timedelta(minutes=rng.randint(0, 59)),
-                        input_tokens=2400, output_tokens=rng.randint(90, 200),
+                        input_tokens=2400,
+                        output_tokens=rng.randint(90, 200),
                         system_prompt_tokens=2000,
                         latency_ms=rng.randint(400, 900),
                         # Small fingerprint space => the same question over and
@@ -207,16 +216,20 @@ def seed(
             # ---- Code assistant: expensive reasoning model ----
             for _ in range(int(rng.gauss(6, 2) * weight)):
                 count += _add(
-                    store, organization_id,
+                    store,
+                    organization_id,
                     _event(
-                        provider=Provider.ANTHROPIC, model="claude-fable-5",
+                        provider=Provider.ANTHROPIC,
+                        model="claude-fable-5",
                         model_type=ModelType.REASONING,
-                        team="developer-tools", feature="code-review",
+                        team="developer-tools",
+                        feature="code-review",
                         occurred_at=moment + timedelta(minutes=rng.randint(0, 59)),
                         input_tokens=rng.randint(9000, 26000),
                         output_tokens=rng.randint(600, 1800),
                         reasoning=rng.randint(800, 3200),
-                        system_prompt_tokens=3200, tool_definition_tokens=1400,
+                        system_prompt_tokens=3200,
+                        tool_definition_tokens=1400,
                         latency_ms=rng.randint(1800, 5200),
                     ),
                 )
@@ -225,15 +238,20 @@ def seed(
             for _ in range(int(rng.gauss(11, 3) * weight)):
                 rag = rng.randint(4000, 7000)
                 count += _add(
-                    store, organization_id,
+                    store,
+                    organization_id,
                     _event(
-                        provider=Provider.ANTHROPIC, model="claude-sonnet-5",
-                        team="search-rag", feature="doc-search",
+                        provider=Provider.ANTHROPIC,
+                        model="claude-sonnet-5",
+                        team="search-rag",
+                        feature="doc-search",
                         occurred_at=moment + timedelta(minutes=rng.randint(0, 59)),
                         input_tokens=4200 + rag,
                         output_tokens=rng.randint(220, 700),
-                        system_prompt_tokens=3400, few_shot_tokens=800,
-                        rag_tokens=rag, rag_chunks=12,
+                        system_prompt_tokens=3400,
+                        few_shot_tokens=800,
+                        rag_tokens=rag,
+                        rag_chunks=12,
                         latency_ms=rng.randint(600, 1800),
                         fingerprint=f"search-{rng.randint(1, 900)}",
                     ),
@@ -242,11 +260,14 @@ def seed(
             # ---- Embeddings: continuous ingestion, some re-embedding ----
             for _ in range(int(rng.gauss(7, 2) * weight)):
                 event = _event(
-                    provider=Provider.OPENAI, model="text-embedding-3-large",
+                    provider=Provider.OPENAI,
+                    model="text-embedding-3-large",
                     model_type=ModelType.EMBEDDING,
-                    team="search-rag", feature="doc-indexing",
+                    team="search-rag",
+                    feature="doc-indexing",
                     occurred_at=moment + timedelta(minutes=rng.randint(0, 59)),
-                    input_tokens=0, output_tokens=0,
+                    input_tokens=0,
+                    output_tokens=0,
                     latency_ms=rng.randint(60, 200),
                     fingerprint=f"doc-{rng.randint(1, 260)}",
                 )
@@ -256,11 +277,14 @@ def seed(
             # ---- Sales summarisation: trivial task on a premium model ----
             for _ in range(int(rng.gauss(5, 2) * weight)):
                 count += _add(
-                    store, organization_id,
+                    store,
+                    organization_id,
                     _event(
-                        provider=Provider.OPENAI, model="gpt-5",
+                        provider=Provider.OPENAI,
+                        model="gpt-5",
                         model_type=ModelType.REASONING,
-                        team="revenue-ai", feature="call-summary",
+                        team="revenue-ai",
+                        feature="call-summary",
                         occurred_at=moment + timedelta(minutes=rng.randint(0, 59)),
                         input_tokens=rng.randint(3000, 7000),
                         output_tokens=rng.randint(150, 350),
@@ -273,11 +297,14 @@ def seed(
             # ---- Contract review: low volume, very high value ----
             if rng.random() < 0.35 * weight:
                 count += _add(
-                    store, organization_id,
+                    store,
+                    organization_id,
                     _event(
-                        provider=Provider.ANTHROPIC, model="claude-opus-5",
+                        provider=Provider.ANTHROPIC,
+                        model="claude-opus-5",
                         model_type=ModelType.REASONING,
-                        team="contract-review", feature="contract-analysis",
+                        team="contract-review",
+                        feature="contract-analysis",
                         occurred_at=moment + timedelta(minutes=rng.randint(0, 59)),
                         input_tokens=rng.randint(40000, 120000),
                         output_tokens=rng.randint(1500, 4000),
@@ -290,14 +317,18 @@ def seed(
             # ---- Marketing copy: cheap model, high volume ----
             for _ in range(int(rng.gauss(8, 3) * weight)):
                 count += _add(
-                    store, organization_id,
+                    store,
+                    organization_id,
                     _event(
-                        provider=Provider.GOOGLE_GEMINI, model="gemini-2.5-flash",
-                        team="content-studio", feature="copy-generation",
+                        provider=Provider.GOOGLE_GEMINI,
+                        model="gemini-2.5-flash",
+                        team="content-studio",
+                        feature="copy-generation",
                         occurred_at=moment + timedelta(minutes=rng.randint(0, 59)),
                         input_tokens=rng.randint(800, 2200),
                         output_tokens=rng.randint(400, 1200),
-                        system_prompt_tokens=600, few_shot_tokens=1100,
+                        system_prompt_tokens=600,
+                        few_shot_tokens=1100,
                         latency_ms=rng.randint(300, 900),
                     ),
                 )
@@ -308,10 +339,13 @@ def seed(
                 for attempt in range(rng.randint(2, 5)):
                     failed = attempt < 2
                     count += _add(
-                        store, organization_id,
+                        store,
+                        organization_id,
                         _event(
-                            provider=Provider.GROQ, model="llama-4-70b",
-                            team="developer-tools", feature="autocomplete",
+                            provider=Provider.GROQ,
+                            model="llama-4-70b",
+                            team="developer-tools",
+                            feature="autocomplete",
                             occurred_at=moment + timedelta(minutes=attempt),
                             input_tokens=rng.randint(1200, 2600),
                             output_tokens=0 if failed else rng.randint(80, 260),
@@ -327,19 +361,24 @@ def seed(
     agent_start = now - timedelta(hours=6)
     for step in range(48):
         count += _add(
-            store, organization_id,
+            store,
+            organization_id,
             _event(
-                provider=Provider.OPENAI, model="gpt-5",
+                provider=Provider.OPENAI,
+                model="gpt-5",
                 model_type=ModelType.REASONING,
-                team="developer-tools", feature="autonomous-refactor",
+                team="developer-tools",
+                feature="autonomous-refactor",
                 occurred_at=agent_start + timedelta(minutes=step * 4),
                 # Context accumulates across steps — the agent is re-reading
                 # its whole scratchpad every iteration.
                 input_tokens=6000 + step * 900,
                 output_tokens=rng.randint(400, 900),
                 reasoning=rng.randint(600, 2000),
-                agent_run_id=run_id, agent_step=step,
-                system_prompt_tokens=2400, tool_definition_tokens=1800,
+                agent_run_id=run_id,
+                agent_step=step,
+                system_prompt_tokens=2400,
+                tool_definition_tokens=1800,
                 latency_ms=rng.randint(2000, 6000),
             ),
         )
@@ -348,11 +387,14 @@ def seed(
     spike_day = now - timedelta(days=2)
     for i in range(220):
         count += _add(
-            store, organization_id,
+            store,
+            organization_id,
             _event(
-                provider=Provider.ANTHROPIC, model="claude-opus-5",
+                provider=Provider.ANTHROPIC,
+                model="claude-opus-5",
                 model_type=ModelType.REASONING,
-                team="content-studio", feature="bulk-rewrite",
+                team="content-studio",
+                feature="bulk-rewrite",
                 occurred_at=spike_day + timedelta(minutes=i * 2),
                 input_tokens=rng.randint(28000, 60000),
                 output_tokens=rng.randint(1200, 2600),

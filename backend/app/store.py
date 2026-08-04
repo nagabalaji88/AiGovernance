@@ -76,9 +76,7 @@ class AnalyticsStore:
 
     # -- ingestion ----------------------------------------------------------
 
-    def ingest(
-        self, payload: list[s.UsageEventIn], *, organization_id: UUID
-    ) -> s.IngestResult:
+    def ingest(self, payload: list[s.UsageEventIn], *, organization_id: UUID) -> s.IngestResult:
         result = s.IngestResult(accepted=0)
         with self._lock:
             seen = self._idempotency[organization_id]
@@ -182,14 +180,9 @@ class AnalyticsStore:
 
     # -- queries ------------------------------------------------------------
 
-    def events_between(
-        self, organization_id: UUID, start: datetime, end: datetime
-    ) -> list[UsageEvent]:
+    def events_between(self, organization_id: UUID, start: datetime, end: datetime) -> list[UsageEvent]:
         with self._lock:
-            return [
-                e for e in self._events.get(organization_id, [])
-                if start <= e.occurred_at <= end
-            ]
+            return [e for e in self._events.get(organization_id, []) if start <= e.occurred_at <= end]
 
     def register_labels(self, labels: dict[str, str], *, organization_id: UUID) -> None:
         """Register display names for entity ids (departments, teams, …)."""
@@ -211,9 +204,7 @@ class AnalyticsStore:
     def costs_for(self, events: list[UsageEvent]) -> dict[str, CostBreakdown]:
         return {str(e.id): self.cost_of(e) for e in events}
 
-    def daily_series(
-        self, organization_id: UUID, start: datetime, end: datetime
-    ) -> list[s.TimeSeriesPoint]:
+    def daily_series(self, organization_id: UUID, start: datetime, end: datetime) -> list[s.TimeSeriesPoint]:
         events = self.events_between(organization_id, start, end)
         buckets: dict[date, dict[str, Decimal | int]] = defaultdict(
             lambda: {"cost": ZERO, "tokens": 0, "requests": 0}
@@ -242,9 +233,7 @@ class AnalyticsStore:
             cursor += timedelta(days=1)
         return out
 
-    def dense_daily_costs(
-        self, organization_id: UUID, start: datetime, end: datetime
-    ) -> list[Decimal]:
+    def dense_daily_costs(self, organization_id: UUID, start: datetime, end: datetime) -> list[Decimal]:
         return [p.cost for p in self.daily_series(organization_id, start, end)]
 
     def daily_cost_series_by_model(
@@ -264,9 +253,7 @@ class AnalyticsStore:
             cursor += timedelta(days=1)
         return {model: [buckets.get(d, ZERO) for d in days] for model, buckets in by_model.items()}
 
-    def month_to_date_spend(
-        self, organization_id: UUID, *, department_id: UUID | None = None
-    ) -> Decimal:
+    def month_to_date_spend(self, organization_id: UUID, *, department_id: UUID | None = None) -> Decimal:
         """Spend so far in the current calendar month, optionally per department.
 
         Matches the window a monthly budget is evaluated against, so a budget
@@ -330,9 +317,7 @@ class AnalyticsStore:
     def _budget_status_out(self, budget: Budget, organization_id: UUID) -> s.BudgetStatusOut:
         start, end = budget.period_bounds()
         spent = self._spent_in_period(organization_id, budget)
-        status = BudgetStatus(
-            budget=budget, spent=spent, period_start=start, period_end=end
-        )
+        status = BudgetStatus(budget=budget, spent=spent, period_start=start, period_end=end)
         return s.BudgetStatusOut(
             id=budget.id,
             name=budget.name or budget.scope_id,
@@ -350,9 +335,7 @@ class AnalyticsStore:
             projected_to_exceed=status.projected_to_exceed,
         )
 
-    def evaluate_preflight(
-        self, payload: s.PreflightIn, *, organization_id: UUID
-    ) -> s.PreflightOut:
+    def evaluate_preflight(self, payload: s.PreflightIn, *, organization_id: UUID) -> s.PreflightOut:
         try:
             provider = Provider(payload.provider)
         except ValueError:
@@ -401,9 +384,7 @@ class AnalyticsStore:
         for budget in budgets:
             start, end = budget.period_bounds()
             spent = self._spent_in_period(organization_id, budget)
-            candidate = BudgetStatus(
-                budget=budget, spent=spent, period_start=start, period_end=end
-            )
+            candidate = BudgetStatus(budget=budget, spent=spent, period_start=start, period_end=end)
             # Evaluate against the most-utilised applicable budget: the
             # tightest constraint is the one that governs.
             if budget_status is None or candidate.utilisation > budget_status.utilisation:
@@ -424,9 +405,7 @@ class AnalyticsStore:
         with self._lock:
             self._policies[organization_id].append(policy)
 
-    def chargeback(
-        self, organization_id: UUID, start: datetime, end: datetime
-    ) -> list[s.ChargebackLineOut]:
+    def chargeback(self, organization_id: UUID, start: datetime, end: datetime) -> list[s.ChargebackLineOut]:
         events = self.events_between(organization_id, start, end)
         direct: dict[str, Decimal] = defaultdict(lambda: ZERO)
         tokens: dict[str, int] = defaultdict(int)

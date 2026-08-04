@@ -118,9 +118,7 @@ def create_app() -> FastAPI:
         elapsed = time.perf_counter() - started
         route = request.scope.get("route")
         path = getattr(route, "path", request.url.path)
-        REQUEST_COUNT.labels(
-            method=request.method, path=path, status=str(response.status_code)
-        ).inc()
+        REQUEST_COUNT.labels(method=request.method, path=path, status=str(response.status_code)).inc()
         REQUEST_LATENCY.labels(method=request.method, path=path).observe(elapsed)
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Response-Time-Ms"] = f"{elapsed * 1000:.2f}"

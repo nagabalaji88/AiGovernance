@@ -90,12 +90,8 @@ class TestPromptOptimizer:
         assert po.fingerprint("Hello World") != po.fingerprint("Goodbye World")
 
     def test_score_penalises_waste_and_rewards_cacheable_structure(self) -> None:
-        wasteful = po.PromptAnalysis(
-            fingerprint="a", total_tokens=1000, recoverable_tokens=400
-        )
-        clean = po.PromptAnalysis(
-            fingerprint="b", total_tokens=1000, recoverable_tokens=0, static_tokens=800
-        )
+        wasteful = po.PromptAnalysis(fingerprint="a", total_tokens=1000, recoverable_tokens=400)
+        clean = po.PromptAnalysis(fingerprint="b", total_tokens=1000, recoverable_tokens=0, static_tokens=800)
         assert po.score_prompt(clean) > po.score_prompt(wasteful)
 
     def test_analysis_result_carries_no_prompt_text(self) -> None:
@@ -108,30 +104,42 @@ class TestPromptOptimizer:
 class TestPromptComparison:
     def test_rejects_promotion_on_insufficient_samples(self) -> None:
         comparison = po.PromptComparison(
-            baseline_version="v1", candidate_version="v2",
-            baseline_tokens=1000, candidate_tokens=600,
-            baseline_quality=Decimal("0.9"), candidate_quality=Decimal("0.9"),
-            baseline_cost=Decimal("100"), candidate_cost=Decimal("60"),
+            baseline_version="v1",
+            candidate_version="v2",
+            baseline_tokens=1000,
+            candidate_tokens=600,
+            baseline_quality=Decimal("0.9"),
+            candidate_quality=Decimal("0.9"),
+            baseline_cost=Decimal("100"),
+            candidate_cost=Decimal("60"),
             sample_size=15,
         )
         assert "inconclusive" in comparison.verdict()
 
     def test_quality_regression_vetoes_a_cost_win(self) -> None:
         comparison = po.PromptComparison(
-            baseline_version="v1", candidate_version="v2",
-            baseline_tokens=1000, candidate_tokens=400,
-            baseline_quality=Decimal("0.90"), candidate_quality=Decimal("0.70"),
-            baseline_cost=Decimal("100"), candidate_cost=Decimal("40"),
+            baseline_version="v1",
+            candidate_version="v2",
+            baseline_tokens=1000,
+            candidate_tokens=400,
+            baseline_quality=Decimal("0.90"),
+            candidate_quality=Decimal("0.70"),
+            baseline_cost=Decimal("100"),
+            candidate_cost=Decimal("40"),
             sample_size=500,
         )
         assert comparison.verdict().startswith("reject")
 
     def test_promotes_a_cheaper_equal_quality_prompt(self) -> None:
         comparison = po.PromptComparison(
-            baseline_version="v1", candidate_version="v2",
-            baseline_tokens=1000, candidate_tokens=600,
-            baseline_quality=Decimal("0.90"), candidate_quality=Decimal("0.91"),
-            baseline_cost=Decimal("100"), candidate_cost=Decimal("60"),
+            baseline_version="v1",
+            candidate_version="v2",
+            baseline_tokens=1000,
+            candidate_tokens=600,
+            baseline_quality=Decimal("0.90"),
+            candidate_quality=Decimal("0.91"),
+            baseline_cost=Decimal("100"),
+            candidate_cost=Decimal("60"),
             sample_size=500,
         )
         assert comparison.verdict().startswith("promote")
@@ -160,9 +168,7 @@ class TestModelRouter:
         assert cheap.selected and best.selected
         assert cheap.selected.estimated_cost <= best.selected.estimated_cost
 
-    def test_quality_floor_blocks_weak_models_on_expert_tasks(
-        self, router: ModelRouter
-    ) -> None:
+    def test_quality_floor_blocks_weak_models_on_expert_tasks(self, router: ModelRouter) -> None:
         """This is the guard that stops 'cheapest' becoming a quality incident."""
         decision = router.route(
             RoutingRequest(
@@ -177,17 +183,20 @@ class TestModelRouter:
         assert any("quality" in reason for reason in decision.rejected.values())
 
     def test_context_window_is_a_hard_filter(self, router: ModelRouter) -> None:
-        decision = router.route(
-            RoutingRequest(expected_input_tokens=900_000, expected_output_tokens=1000)
-        )
+        decision = router.route(RoutingRequest(expected_input_tokens=900_000, expected_output_tokens=1000))
         assert decision.selected
-        assert decision.selected.model in {"gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
-                                           "gemini-2.5-pro", "gemini-2.5-flash",
-                                           "gemini-2.5-flash-lite", "gpt-5", "gpt-5-mini"}
+        assert decision.selected.model in {
+            "gpt-4.1",
+            "gpt-4.1-mini",
+            "gpt-4.1-nano",
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gpt-5",
+            "gpt-5-mini",
+        }
 
-    def test_compliance_allow_list_cannot_be_outvoted_by_cost(
-        self, router: ModelRouter
-    ) -> None:
+    def test_compliance_allow_list_cannot_be_outvoted_by_cost(self, router: ModelRouter) -> None:
         """Compliance is a filter, not a weighted term — by design."""
         decision = router.route(
             RoutingRequest(
@@ -212,9 +221,7 @@ class TestModelRouter:
         assert decision.selected
         assert decision.selected.provider in {Provider.VLLM, Provider.OLLAMA}
 
-    def test_vision_requirement_filters_out_text_only_models(
-        self, router: ModelRouter
-    ) -> None:
+    def test_vision_requirement_filters_out_text_only_models(self, router: ModelRouter) -> None:
         decision = router.route(
             RoutingRequest(
                 expected_input_tokens=1000,
@@ -225,9 +232,7 @@ class TestModelRouter:
         assert decision.selected
         assert "no vision support" in " ".join(decision.rejected.values())
 
-    def test_impossible_constraints_return_an_explanation_not_a_crash(
-        self, router: ModelRouter
-    ) -> None:
+    def test_impossible_constraints_return_an_explanation_not_a_crash(self, router: ModelRouter) -> None:
         decision = router.route(
             RoutingRequest(
                 expected_input_tokens=50_000_000,
@@ -246,9 +251,7 @@ class TestModelRouter:
         assert decision.selected.factors.keys() == {"cost", "latency", "quality", "reliability"}
         assert decision.rationale
 
-    def test_measured_quality_overrides_the_catalog_prior(
-        self, router: ModelRouter
-    ) -> None:
+    def test_measured_quality_overrides_the_catalog_prior(self, router: ModelRouter) -> None:
         request = RoutingRequest(
             expected_input_tokens=1000,
             expected_output_tokens=200,
@@ -310,24 +313,29 @@ class TestRagOptimizer:
 
     def test_no_overlap_recommendation_when_already_tight(self) -> None:
         config = ro.RagConfig(chunk_size=512, chunk_overlap=50, top_k=10)
-        assert ro.optimize_overlap(
-            config, input_rate_per_token=Decimal("0.000002"), monthly_requests=100_000
-        ) is None
+        assert (
+            ro.optimize_overlap(config, input_rate_per_token=Decimal("0.000002"), monthly_requests=100_000)
+            is None
+        )
 
     def test_topk_reduction_without_citation_data_demands_evaluation(self) -> None:
         """Cutting k blind is how a cost programme causes a quality incident."""
         config = ro.RagConfig(top_k=12)
-        result = ro.optimize_top_k(
-            config, input_rate_per_token=Decimal("0.000002"), monthly_requests=100_000
-        )
+        result = ro.optimize_top_k(config, input_rate_per_token=Decimal("0.000002"), monthly_requests=100_000)
         assert result is not None
         assert result.requires_evaluation
         assert result.confidence <= Decimal("0.5")
 
     def test_topk_reduction_with_citation_data_is_confident(self) -> None:
         config = ro.RagConfig(top_k=12)
-        citations = {1: Decimal("0.4"), 2: Decimal("0.3"), 3: Decimal("0.2"),
-                     4: Decimal("0.05"), 5: Decimal("0.01"), 9: Decimal("0.001")}
+        citations = {
+            1: Decimal("0.4"),
+            2: Decimal("0.3"),
+            3: Decimal("0.2"),
+            4: Decimal("0.05"),
+            5: Decimal("0.01"),
+            9: Decimal("0.001"),
+        }
         result = ro.optimize_top_k(
             config,
             input_rate_per_token=Decimal("0.000002"),
@@ -350,17 +358,13 @@ class TestRagOptimizer:
     def test_advisory_does_not_triple_count_overlapping_levers(self) -> None:
         """top_k, chunk_size and reranker all act on the same token budget."""
         config = ro.RagConfig(chunk_size=1024, chunk_overlap=256, top_k=15)
-        advisory = ro.advise(
-            config, input_rate_per_token=Decimal("0.000002"), monthly_requests=200_000
-        )
+        advisory = ro.advise(config, input_rate_per_token=Decimal("0.000002"), monthly_requests=200_000)
         naive_sum = sum(o.monthly_savings for o in advisory.optimizations)
         assert advisory.total_monthly_savings < naive_sum
 
     def test_safe_savings_exclude_anything_needing_evaluation(self) -> None:
         config = ro.RagConfig(chunk_size=1024, chunk_overlap=256, top_k=15)
-        advisory = ro.advise(
-            config, input_rate_per_token=Decimal("0.000002"), monthly_requests=200_000
-        )
+        advisory = ro.advise(config, input_rate_per_token=Decimal("0.000002"), monthly_requests=200_000)
         assert advisory.safe_savings <= advisory.total_monthly_savings
 
 
@@ -383,43 +387,33 @@ class TestSimulator:
             cacheable_request_ratio=Decimal("0.25"),
         )
 
-    def test_levers_compose_multiplicatively_not_additively(
-        self, profile: WorkloadProfile
-    ) -> None:
+    def test_levers_compose_multiplicatively_not_additively(self, profile: WorkloadProfile) -> None:
         """Summing individual savings overstates combined effect, sometimes >100%."""
         simulator = Simulator()
         compress = simulator.run(profile, [CompressPrompt(reduction_pct=Decimal("30"))])
         cache = simulator.run(profile, [EnableResponseCache(hit_rate=Decimal("0.5"))])
         both = simulator.run(
             profile,
-            [CompressPrompt(reduction_pct=Decimal("30")),
-             EnableResponseCache(hit_rate=Decimal("0.5"))],
+            [CompressPrompt(reduction_pct=Decimal("30")), EnableResponseCache(hit_rate=Decimal("0.5"))],
         )
         assert both.monthly_savings < compress.monthly_savings + cache.monthly_savings
         assert both.savings_pct < Decimal("100")
 
-    def test_prompt_cache_moves_static_tokens_to_the_cheaper_class(
-        self, profile: WorkloadProfile
-    ) -> None:
+    def test_prompt_cache_moves_static_tokens_to_the_cheaper_class(self, profile: WorkloadProfile) -> None:
         result = Simulator().run(profile, [EnablePromptCache(hit_rate=Decimal("1.0"))])
         assert result.monthly_savings > Decimal("0")
         assert result.quality_delta == Decimal("0")
 
-    def test_compression_does_not_touch_static_or_rag_regions(
-        self, profile: WorkloadProfile
-    ) -> None:
+    def test_compression_does_not_touch_static_or_rag_regions(self, profile: WorkloadProfile) -> None:
         """Otherwise it double-counts against caching and RAG pruning."""
         result = Simulator().run(profile, [CompressPrompt(reduction_pct=Decimal("100"))])
         # 4k static + 3k RAG must survive a 100% compression of the dynamic body.
         assert result.projected_tokens_per_request >= 7_000
 
-    def test_quality_regression_vetoes_a_large_saving(
-        self, profile: WorkloadProfile
-    ) -> None:
+    def test_quality_regression_vetoes_a_large_saving(self, profile: WorkloadProfile) -> None:
         result = Simulator().run(
             profile,
-            [SwitchModel(provider=Provider.GROQ, model="llama-4-8b",
-                         quality_delta=Decimal("-0.20"))],
+            [SwitchModel(provider=Provider.GROQ, model="llama-4-8b", quality_delta=Decimal("-0.20"))],
         )
         assert result.recommendation.startswith("reject")
 
@@ -427,8 +421,11 @@ class TestSimulator:
         """A scenario that is not physically executable must say so, not just
         report a cheaper price."""
         profile = WorkloadProfile(
-            provider=Provider.OPENAI, model="gpt-4.1",
-            monthly_requests=1000, avg_input_tokens=400_000, avg_output_tokens=2000,
+            provider=Provider.OPENAI,
+            model="gpt-4.1",
+            monthly_requests=1000,
+            avg_input_tokens=400_000,
+            avg_output_tokens=2000,
         )
         result = Simulator().run(
             profile,
@@ -437,9 +434,7 @@ class TestSimulator:
         assert any("window" in w for w in result.warnings)
 
     def test_warns_on_implausibly_large_savings(self, profile: WorkloadProfile) -> None:
-        result = Simulator().run(
-            profile, [EnableResponseCache(hit_rate=Decimal("0.95"))]
-        )
+        result = Simulator().run(profile, [EnableResponseCache(hit_rate=Decimal("0.95"))])
         assert any("80%" in w for w in result.warnings)
 
     def test_batch_lever_flags_the_latency_cost(self, profile: WorkloadProfile) -> None:
@@ -467,9 +462,7 @@ class TestRoi:
         assert result["worth_doing"] is True
 
     def test_ongoing_cost_reduces_net_savings(self) -> None:
-        result = roi(
-            monthly_savings=1000, implementation_hours=10, ongoing_monthly_cost=900
-        )
+        result = roi(monthly_savings=1000, implementation_hours=10, ongoing_monthly_cost=900)
         assert result["net_monthly_savings"] == 100.0
 
 
@@ -520,9 +513,7 @@ class TestQualityGate:
 
     def test_blocks_on_insufficient_samples(self) -> None:
         gate = QualityGate(min_sample_size=100)
-        verdict = gate.evaluate(
-            self._baseline("v1", 0.9, n=500), self._baseline("v2", 0.9, n=10)
-        )
+        verdict = gate.evaluate(self._baseline("v1", 0.9, n=500), self._baseline("v2", 0.9, n=10))
         assert verdict.blocked
         assert any("Insufficient samples" in r for r in verdict.reasons)
 
@@ -532,12 +523,16 @@ class TestQualityGate:
         baseline = QualityBaseline(subject="v1")
         baseline.measurements[QualityDimension.HALLUCINATION_RATE] = QualityMeasurement(
             dimension=QualityDimension.HALLUCINATION_RATE,
-            score=Decimal("0.02"), sample_size=500, stddev=Decimal("0.01"),
+            score=Decimal("0.02"),
+            sample_size=500,
+            stddev=Decimal("0.01"),
         )
         worse = QualityBaseline(subject="v2")
         worse.measurements[QualityDimension.HALLUCINATION_RATE] = QualityMeasurement(
             dimension=QualityDimension.HALLUCINATION_RATE,
-            score=Decimal("0.15"), sample_size=500, stddev=Decimal("0.01"),
+            score=Decimal("0.15"),
+            sample_size=500,
+            stddev=Decimal("0.01"),
         )
         assert gate.evaluate(baseline, worse).blocked
         assert not gate.evaluate(worse, baseline).blocked

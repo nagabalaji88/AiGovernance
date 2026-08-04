@@ -225,9 +225,7 @@ class ModelRouter:
         if c.require_self_hosted and card.model_type is not ModelType.LOCAL:
             return "data residency policy requires a self-hosted model"
         if card.max_output_tokens < request.expected_output_tokens:
-            return (
-                f"max output {card.max_output_tokens} < required {request.expected_output_tokens}"
-            )
+            return f"max output {card.max_output_tokens} < required {request.expected_output_tokens}"
 
         quality = self._quality_of(card, request)
         floor = COMPLEXITY_QUALITY_FLOOR[request.complexity]
@@ -320,9 +318,7 @@ class ModelRouter:
                 "reliability": float(reliability_score),
             }
 
-    def _baseline_from_catalog(
-        self, baseline_model: str, request: RoutingRequest
-    ) -> RoutingCandidate | None:
+    def _baseline_from_catalog(self, baseline_model: str, request: RoutingRequest) -> RoutingCandidate | None:
         for card in self.catalog.all_cards():
             if card.model == baseline_model:
                 return self._build_candidate(card, request)
@@ -351,13 +347,10 @@ class ModelRouter:
                     if selected.quality >= baseline.quality
                     else f"with a {baseline.quality - selected.quality} quality index reduction"
                 )
-                parts.append(
-                    f"That is {pct:.1f}% cheaper than {baseline.key} ({quality_note})."
-                )
+                parts.append(f"That is {pct:.1f}% cheaper than {baseline.key} ({quality_note}).")
             else:
                 parts.append(
-                    f"This costs more than {baseline.key}, justified by the "
-                    f"{request.objective} objective."
+                    f"This costs more than {baseline.key}, justified by the {request.objective} objective."
                 )
         return " ".join(parts)
 
@@ -432,13 +425,9 @@ def compare_models(
                 "annual_cost": float(quantize_cost(monthly * Decimal("12"))),
                 "quality_index": float(card.quality_index),
                 "context_window": card.context_window,
-                "estimated_latency_ms": int(
-                    card.latency_ms_per_1k_output * output_tokens / 1000
-                ),
+                "estimated_latency_ms": int(card.latency_ms_per_1k_output * output_tokens / 1000),
                 "supports_prompt_cache": card.supports_prompt_cache,
-                "cost_per_quality_point": float(
-                    safe_div(per_request, to_decimal(card.quality_index))
-                ),
+                "cost_per_quality_point": float(safe_div(per_request, to_decimal(card.quality_index))),
             }
         )
     rows.sort(key=lambda r: r["monthly_cost"])  # type: ignore[arg-type,return-value]

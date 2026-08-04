@@ -150,9 +150,7 @@ def holt_winters(
         return fitted, forecast, False
 
     seasons = n // season_length
-    season_means = [
-        fmean(series[i * season_length : (i + 1) * season_length]) for i in range(seasons)
-    ]
+    season_means = [fmean(series[i * season_length : (i + 1) * season_length]) for i in range(seasons)]
     overall = fmean(season_means) if season_means else 0.0
 
     # Initial seasonal indices: average deviation of each phase from its
@@ -215,9 +213,7 @@ def forecast_cost(
         mean = fmean(_f(values)) if values else 0.0
         result.method = "insufficient_history_mean"
         result.seasonal = False
-        result.warnings.append(
-            f"only {len(values)} observations; need {MIN_OBSERVATIONS} for a trend model"
-        )
+        result.warnings.append(f"only {len(values)} observations; need {MIN_OBSERVATIONS} for a trend model")
         band = Decimal("0.5") * to_decimal(mean)
         result.points = [
             ForecastPoint(
@@ -230,9 +226,7 @@ def forecast_cost(
         ]
         return result
 
-    fitted, projection, seasonal_used = holt_winters(
-        values, horizon_days, season_length=season_length
-    )
+    fitted, projection, seasonal_used = holt_winters(values, horizon_days, season_length=season_length)
     result.seasonal = seasonal_used
     if not seasonal_used:
         result.method = "damped_holt"

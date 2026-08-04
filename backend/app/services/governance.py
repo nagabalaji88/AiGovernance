@@ -49,37 +49,80 @@ ROLE_PERMISSIONS: dict[Role, frozenset[str]] = {
     Role.VIEWER: frozenset({"dashboard:read", "usage:read", "forecast:read"}),
     Role.DEVELOPER: frozenset(
         {
-            "dashboard:read", "usage:read", "forecast:read",
-            "prompt:read", "prompt:write", "simulation:run", "recommendation:read",
+            "dashboard:read",
+            "usage:read",
+            "forecast:read",
+            "prompt:read",
+            "prompt:write",
+            "simulation:run",
+            "recommendation:read",
         }
     ),
     Role.ANALYST: frozenset(
         {
-            "dashboard:read", "usage:read", "forecast:read", "prompt:read",
-            "simulation:run", "recommendation:read", "report:export", "anomaly:read",
+            "dashboard:read",
+            "usage:read",
+            "forecast:read",
+            "prompt:read",
+            "simulation:run",
+            "recommendation:read",
+            "report:export",
+            "anomaly:read",
         }
     ),
     Role.FINOPS: frozenset(
         {
-            "dashboard:read", "usage:read", "forecast:read", "prompt:read",
-            "simulation:run", "recommendation:read", "recommendation:write",
-            "report:export", "anomaly:read", "budget:read", "budget:write",
-            "chargeback:read", "chargeback:write", "policy:read",
+            "dashboard:read",
+            "usage:read",
+            "forecast:read",
+            "prompt:read",
+            "simulation:run",
+            "recommendation:read",
+            "recommendation:write",
+            "report:export",
+            "anomaly:read",
+            "budget:read",
+            "budget:write",
+            "chargeback:read",
+            "chargeback:write",
+            "policy:read",
         }
     ),
     Role.APPROVER: frozenset(
         {
-            "dashboard:read", "usage:read", "forecast:read", "recommendation:read",
-            "approval:decide", "budget:read", "policy:read", "anomaly:read",
+            "dashboard:read",
+            "usage:read",
+            "forecast:read",
+            "recommendation:read",
+            "approval:decide",
+            "budget:read",
+            "policy:read",
+            "anomaly:read",
         }
     ),
     Role.ADMIN: frozenset(
         {
-            "dashboard:read", "usage:read", "forecast:read", "prompt:read", "prompt:write",
-            "simulation:run", "recommendation:read", "recommendation:write", "report:export",
-            "anomaly:read", "anomaly:write", "budget:read", "budget:write",
-            "chargeback:read", "chargeback:write", "policy:read", "policy:write",
-            "user:read", "user:write", "approval:decide", "audit:read",
+            "dashboard:read",
+            "usage:read",
+            "forecast:read",
+            "prompt:read",
+            "prompt:write",
+            "simulation:run",
+            "recommendation:read",
+            "recommendation:write",
+            "report:export",
+            "anomaly:read",
+            "anomaly:write",
+            "budget:read",
+            "budget:write",
+            "chargeback:read",
+            "chargeback:write",
+            "policy:read",
+            "policy:write",
+            "user:read",
+            "user:write",
+            "approval:decide",
+            "audit:read",
         }
     ),
     Role.OWNER: frozenset({"*"}),
@@ -130,9 +173,7 @@ class Budget:
             start = date(today.year, quarter * 3 + 1, 1)
             end_month = start.month + 3
             end = (
-                date(start.year + 1, 1, 1)
-                if end_month > 12
-                else date(start.year, end_month, 1)
+                date(start.year + 1, 1, 1) if end_month > 12 else date(start.year, end_month, 1)
             ) - timedelta(days=1)
             return start, end
         return date(today.year, 1, 1), date(today.year, 12, 31)
@@ -248,9 +289,7 @@ class Policy:
                 reason=f"Provider '{request.provider}' is not on the approved vendor list.",
             )
         if request.model in self.blocked_models:
-            return PolicyViolation(
-                policy=self, reason=f"Model '{request.model}' is blocked by policy."
-            )
+            return PolicyViolation(policy=self, reason=f"Model '{request.model}' is blocked by policy.")
         if self.require_approval_above is not None and request.estimated_cost > self.require_approval_above:
             return PolicyViolation(
                 policy=self,
@@ -391,7 +430,7 @@ class PolicyEngine:
             if budget_action is not EnforcementAction.ALLOW:
                 reasons.append(
                     f"Budget '{budget_status.budget.scope}:{budget_status.budget.scope_id}' at "
-                    f"{budget_status.utilisation*100:.1f}% of "
+                    f"{budget_status.utilisation * 100:.1f}% of "
                     f"{budget_status.budget.amount} for the {budget_status.budget.period} period."
                 )
                 violated.append(f"budget:{budget_status.budget.id}")

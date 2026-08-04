@@ -215,7 +215,7 @@ def detect_runaway_agents(
                 title=f"Agent run {run_id[:12]} may not be terminating",
                 detail=(
                     f"{steps} model calls at depth {depth} costing {_usd(spend)} "
-                    f"over {duration/60:.1f} minutes."
+                    f"over {duration / 60:.1f} minutes."
                 ),
                 scope="agent_run",
                 scope_key=run_id,
@@ -453,7 +453,7 @@ def detect_error_bursts(
                 severity=_severity_for(rate * Decimal("10"), entry["cost"]),
                 title=f"Elevated error rate on {provider}",
                 detail=(
-                    f"{rate*100:.1f}% of {int(entry['total']):,} requests failed. "
+                    f"{rate * 100:.1f}% of {int(entry['total']):,} requests failed. "
                     f"{_usd(entry['cost'])} was billed for work that returned nothing."
                 ),
                 scope="provider",

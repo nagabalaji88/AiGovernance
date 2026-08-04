@@ -246,9 +246,7 @@ async def heatmap(
     start, end = _window(days)
     events = store.events_between(principal.organization_id, start, end)
     costs = store.costs_for(events)
-    matrix = ta.token_heatmap(
-        events, costs, row_dimension=row_dimension, column_dimension=column_dimension
-    )
+    matrix = ta.token_heatmap(events, costs, row_dimension=row_dimension, column_dimension=column_dimension)
     raw_rows = sorted(matrix)
     columns = sorted({c for cells in matrix.values() for c in cells})
     # Axis labels must be human-readable for the same reason the Sankey nodes
@@ -329,8 +327,7 @@ async def get_forecast(
     )
     return s.ForecastOut(
         points=[
-            s.ForecastPointOut(at=p.at, value=p.value, lower=p.lower, upper=p.upper)
-            for p in result.points
+            s.ForecastPointOut(at=p.at, value=p.value, lower=p.lower, upper=p.upper) for p in result.points
         ],
         method=result.method,
         mape=result.mape,
@@ -542,22 +539,14 @@ _LEVER_BUILDERS = {
         reduction_pct=spec.reduction_pct or Decimal("20"),
         quality_delta=spec.quality_delta if spec.quality_delta is not None else Decimal("-0.005"),
     ),
-    "enable_prompt_cache": lambda spec: EnablePromptCache(
-        hit_rate=spec.hit_rate or Decimal("0.85")
-    ),
-    "enable_response_cache": lambda spec: EnableResponseCache(
-        hit_rate=spec.hit_rate or Decimal("0.2")
-    ),
+    "enable_prompt_cache": lambda spec: EnablePromptCache(hit_rate=spec.hit_rate or Decimal("0.85")),
+    "enable_response_cache": lambda spec: EnableResponseCache(hit_rate=spec.hit_rate or Decimal("0.2")),
     "reduce_rag_context": lambda spec: ReduceRagContext(
         reduction_pct=spec.reduction_pct or Decimal("30"),
         quality_delta=spec.quality_delta if spec.quality_delta is not None else Decimal("-0.01"),
     ),
-    "summarise_history": lambda spec: SummariseHistory(
-        reduction_pct=spec.reduction_pct or Decimal("60")
-    ),
-    "batch_requests": lambda spec: BatchRequests(
-        eligible_ratio=spec.eligible_ratio or Decimal("0.4")
-    ),
+    "summarise_history": lambda spec: SummariseHistory(reduction_pct=spec.reduction_pct or Decimal("60")),
+    "batch_requests": lambda spec: BatchRequests(eligible_ratio=spec.eligible_ratio or Decimal("0.4")),
 }
 
 
@@ -608,9 +597,7 @@ async def simulate(
         levers = [_build_lever(spec) for spec in payload.levers]
         results.append(_simulator.run(profile, levers, name=payload.scenario_name))
     if payload.include_standard_scenarios or not payload.levers:
-        results.extend(
-            _simulator.compare(profile, standard_scenarios(profile))
-        )
+        results.extend(_simulator.compare(profile, standard_scenarios(profile)))
     return [s.ScenarioOut(**r.as_dict()) for r in results]  # type: ignore[arg-type]
 
 

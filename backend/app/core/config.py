@@ -84,9 +84,7 @@ class Settings(BaseSettings):
     trace_sample_ratio: float = 0.05
 
     # -- governance defaults ------------------------------------------------
-    default_budget_alert_thresholds: list[float] = Field(
-        default_factory=lambda: [0.5, 0.8, 0.95]
-    )
+    default_budget_alert_thresholds: list[float] = Field(default_factory=lambda: [0.5, 0.8, 0.95])
     #: Fail open if the policy engine is unavailable. See governance.py.
     policy_fail_open: bool = True
     policy_evaluation_timeout_ms: int = 50

@@ -45,9 +45,7 @@ from app.domain.money import ZERO, safe_div, to_decimal
 
 #: Dimensions where a *lower* value is better, so delta signs must be flipped
 #: before comparison. Getting this wrong silently inverts the gate.
-INVERTED_DIMENSIONS: frozenset[QualityDimension] = frozenset(
-    {QualityDimension.HALLUCINATION_RATE}
-)
+INVERTED_DIMENSIONS: frozenset[QualityDimension] = frozenset({QualityDimension.HALLUCINATION_RATE})
 
 #: Default per-dimension regression tolerance, as an absolute delta on a 0-1
 #: scale. Groundedness and hallucination are tighter than the rest because
@@ -206,9 +204,7 @@ class QualityGate:
         }
         self.min_sample_size = min_sample_size
 
-    def evaluate(
-        self, baseline: QualityBaseline, candidate: QualityBaseline
-    ) -> QualityVerdict:
+    def evaluate(self, baseline: QualityBaseline, candidate: QualityBaseline) -> QualityVerdict:
         verdict = QualityVerdict(subject=candidate.subject)
         verdict.composite_delta = candidate.composite - baseline.composite
 
@@ -227,7 +223,8 @@ class QualityGate:
             verdict.comparisons.append(comparison)
 
         insufficient = [
-            c for c in verdict.comparisons
+            c
+            for c in verdict.comparisons
             if c.dimension in self.guarded and c.sample_size < self.min_sample_size
         ]
         if insufficient:
@@ -265,9 +262,7 @@ class QualityGate:
         return verdict
 
 
-def _welch_p_value(
-    baseline: QualityMeasurement, candidate: QualityMeasurement
-) -> Decimal | None:
+def _welch_p_value(baseline: QualityMeasurement, candidate: QualityMeasurement) -> Decimal | None:
     """Two-sided Welch's t-test p-value, normal-approximated.
 
     Welch rather than Student's because the two samples routinely have
@@ -308,9 +303,7 @@ def groundedness_score(response: str, context_chunks: list[str], *, ngram: int =
     haystack = " ".join(context_chunks).lower().split()
     if len(haystack) < ngram:
         return ZERO
-    context_ngrams = {
-        " ".join(haystack[i : i + ngram]) for i in range(len(haystack) - ngram + 1)
-    }
+    context_ngrams = {" ".join(haystack[i : i + ngram]) for i in range(len(haystack) - ngram + 1)}
     words = response.lower().split()
     if len(words) < ngram:
         return ZERO
@@ -350,16 +343,21 @@ def refusal_detected(response: str) -> bool:
     """
     lowered = response.lower().strip()
     markers = (
-        "i cannot", "i can't", "i'm unable", "i am unable", "as an ai",
-        "i don't have access", "i do not have access", "i'm not able to",
-        "cannot provide", "unable to assist",
+        "i cannot",
+        "i can't",
+        "i'm unable",
+        "i am unable",
+        "as an ai",
+        "i don't have access",
+        "i do not have access",
+        "i'm not able to",
+        "cannot provide",
+        "unable to assist",
     )
     return any(lowered.startswith(m) or f" {m}" in lowered[:400] for m in markers)
 
 
-def build_baseline(
-    subject: str, scores: dict[QualityDimension, list[Decimal]]
-) -> QualityBaseline:
+def build_baseline(subject: str, scores: dict[QualityDimension, list[Decimal]]) -> QualityBaseline:
     """Aggregate per-request scores into a baseline with dispersion."""
     baseline = QualityBaseline(subject=subject)
     for dimension, values in scores.items():

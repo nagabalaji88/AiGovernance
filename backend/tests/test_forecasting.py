@@ -31,9 +31,7 @@ def weekly_series(
     rng = random.Random(1234)
     shape = [1.0, 1.05, 1.1, 1.05, 0.95, 0.25, 0.2]
     return [
-        Decimal(
-            str(round(base * shape[d % 7] + trend * d + rng.uniform(-noise, noise), 4))
-        )
+        Decimal(str(round(base * shape[d % 7] + trend * d + rng.uniform(-noise, noise), 4)))
         for d in range(weeks * 7)
     ]
 

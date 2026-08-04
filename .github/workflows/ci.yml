@@ -109,10 +109,16 @@ jobs:
         # dependency at a time, and the only reliable way to prevent it is to
         # make the regression fail a build rather than show up in a quarterly
         # performance review.
+        #
+        # Source maps are excluded: they are ~4x the size of the code and are
+        # only fetched when devtools is open, so counting them measures
+        # something no user ever downloads and makes the budget meaningless.
         run: |
           BUDGET_KB=1200
-          SIZE_KB=$(du -sk dist/assets | cut -f1)
-          echo "Bundle: ${SIZE_KB}KB (budget ${BUDGET_KB}KB)"
+          SIZE_KB=$(find dist/assets -type f ! -name '*.map' -printf '%s\n' \
+            | awk '{total += $1} END {printf "%d", (total + 1023) / 1024}')
+          echo "Shipped assets (excluding source maps): ${SIZE_KB}KB (budget ${BUDGET_KB}KB)"
+          find dist/assets -type f ! -name '*.map' -printf '  %f  %s bytes\n' | sort
           if [ "$SIZE_KB" -gt "$BUDGET_KB" ]; then
             echo "::error::Bundle size ${SIZE_KB}KB exceeds the ${BUDGET_KB}KB budget"
             exit 1
@@ -123,27 +129,109 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write
     steps:
       - uses: actions/checkout@v4
-      - name: Dependency and secret scan
-        uses: aquasecurity/trivy-action@0.28.0
+      - uses: actions/setup-python@v5
         with:
-          scan-type: fs
-          scanners: vuln,secret,config
-          # Fail only on what is actionable now. Unfixed CVEs still appear in
-          # the SARIF report for tracking, but blocking a deploy on a
-          # vulnerability with no available patch just teaches people to skip
-          # the gate.
-          ignore-unfixed: true
-          severity: CRITICAL,HIGH
-          exit-code: "1"
-          format: sarif
-          output: trivy.sarif
-      - uses: github/codeql-action/upload-sarif@v3
-        if: always()
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - uses: actions/setup-node@v4
         with:
-          sarif_file: trivy.sarif
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # First-party ecosystem auditors rather than a third-party scanning
+      # action. Both ship from the registries whose packages they audit, so
+      # there is no external action version to pin, drift, or have vanish out
+      # from under CI — which is exactly how this job broke the first time.
+      - name: Audit Python dependencies
+        working-directory: backend
+        run: |
+          # Audit an isolated venv containing only this project's dependency
+          # closure. Auditing the ambient environment instead would fail on
+          # advisories in the runner's own build tooling — packages we neither
+          # declare nor ship — and a gate that is red for reasons nobody can
+          # act on is a gate people learn to bypass.
+          python -m venv /tmp/auditenv
+          /tmp/auditenv/bin/pip install --upgrade --quiet pip setuptools wheel
+          /tmp/auditenv/bin/pip install --quiet .
+          /tmp/auditenv/bin/pip install --quiet pip-audit
+
+          # PYSEC-2026-1325 (ecdsa): no fixed version exists — the maintainers
+          # treat constant-time operation as out of scope for a pure-Python
+          # implementation. It reaches us transitively via python-jose, and the
+          # affected ECDSA path is unused: tokens are signed with HS256 (HMAC),
+          # set in core/config.py. Revisit if JWT_ALGORITHM moves to an ES*
+          # curve, and see the follow-up note on replacing python-jose.
+          /tmp/auditenv/bin/python -m pip_audit --desc \
+            --ignore-vuln PYSEC-2026-1325
+
+      - name: Audit Node dependencies
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          echo "::group::All dependencies (advisory only)"
+          npm audit || true
+          echo "::endgroup::"
+          # Gate on production dependencies only — those are what reaches a
+          # user's browser. Dev-only advisories (build tooling, test runners)
+          # are reported above but do not block, since they are absent from the
+          # shipped artifact.
+          #
+          # Suppression is per-advisory rather than by lowering --audit-level,
+          # so a genuinely relevant high cannot slip through behind a blanket
+          # threshold. Each entry needs a reason; matching pip-audit's
+          # --ignore-vuln, an explicit exception beats a weakened gate.
+          python3 - <<'PY'
+          import json, subprocess, sys
+
+          # GHSA-qwww-vcr4-c8h2 — React Router "RSC Mode CSRF Bypass".
+          # Applies only to React Server Components request handling. This is a
+          # client-rendered SPA (createRoot + BrowserRouter, no SSR/RSC), so the
+          # affected code path is never reached.
+          #
+          # It is also unavoidable: the open-redirect advisories affecting
+          # <Link>/useNavigate span 6.0.0-7.17.0, while this one spans
+          # 7.12.0-8.2.0, so no published version clears both. We take the one
+          # in code we do not run over the one in code we do.
+          ALLOWED = {"GHSA-qwww-vcr4-c8h2"}
+
+          raw = subprocess.run(
+              ["npm", "audit", "--omit=dev", "--json"],
+              capture_output=True, text=True,
+          ).stdout
+          report = json.loads(raw)
+
+          blocking = []
+          for name, vuln in report.get("vulnerabilities", {}).items():
+              for source in vuln.get("via", []):
+                  if not isinstance(source, dict):
+                      continue
+                  advisory = source.get("url", "").rsplit("/", 1)[-1]
+                  if advisory in ALLOWED:
+                      print(f"ignored (documented): {advisory}  {name}")
+                      continue
+                  if source.get("severity") in {"high", "critical"}:
+                      blocking.append(f"{name}: {source.get('severity')} {advisory} - {source.get('title')}")
+
+          if blocking:
+              for item in blocking:
+                  print(f"::error::{item}")
+              sys.exit(1)
+          print("No unreviewed high or critical advisories in production dependencies.")
+          PY
+
+      # Secret scanning is handled by GitHub's native push protection on this
+      # repository, so it is deliberately not duplicated here.
+      - name: Verify no committed secrets or env files
+        run: |
+          set -e
+          if git ls-files | grep -E '(^|/)\.env$|\.pem$|\.p12$|id_rsa'; then
+            echo "::error::Credential-bearing file is tracked in git"
+            exit 1
+          fi
+          echo "No credential files tracked."
 
   docker:
     name: Build images

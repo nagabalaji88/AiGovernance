@@ -293,9 +293,9 @@ class BudgetIn(ApiModel):
     alert_thresholds: list[Decimal] = Field(
         default_factory=lambda: [Decimal("0.5"), Decimal("0.8"), Decimal("0.95")]
     )
-    action_at_limit: Literal[
-        "allow", "warn", "require_approval", "downgrade_model", "throttle", "block"
-    ] = "warn"
+    action_at_limit: Literal["allow", "warn", "require_approval", "downgrade_model", "throttle", "block"] = (
+        "warn"
+    )
     hard_stop_multiplier: Decimal | None = Field(default=None, gt=1)
     rollover: bool = False
     owner_email: str | None = None
@@ -417,8 +417,14 @@ class RoutingIn(ApiModel):
     expected_input_tokens: int = Field(ge=0)
     expected_output_tokens: int = Field(ge=0)
     objective: Literal[
-        "cheapest", "fastest", "highest_quality", "balanced", "reasoning", "vision",
-        "embedding", "local_only",
+        "cheapest",
+        "fastest",
+        "highest_quality",
+        "balanced",
+        "reasoning",
+        "vision",
+        "embedding",
+        "local_only",
     ] = "balanced"
     complexity: Literal["trivial", "simple", "moderate", "complex", "expert"] = "moderate"
     baseline_model: str | None = None
@@ -453,8 +459,13 @@ class RoutingOut(ApiModel):
 
 class SimulationLeverIn(ApiModel):
     type: Literal[
-        "switch_model", "compress_prompt", "enable_prompt_cache", "enable_response_cache",
-        "reduce_rag_context", "summarise_history", "batch_requests",
+        "switch_model",
+        "compress_prompt",
+        "enable_prompt_cache",
+        "enable_response_cache",
+        "reduce_rag_context",
+        "summarise_history",
+        "batch_requests",
     ]
     provider: str | None = None
     model: str | None = None

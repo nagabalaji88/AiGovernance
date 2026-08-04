@@ -111,9 +111,7 @@ def _confidence_for_window(window_days: Decimal, sample_size: int) -> Decimal:
     """Confidence degrades with short windows and small samples."""
     window_factor = min(Decimal("1"), safe_div(window_days, Decimal("7")))
     sample_factor = min(Decimal("1"), safe_div(Decimal(sample_size), Decimal("500")))
-    return (window_factor * Decimal("0.5") + sample_factor * Decimal("0.5")).quantize(
-        Decimal("0.01")
-    )
+    return (window_factor * Decimal("0.5") + sample_factor * Decimal("0.5")).quantize(Decimal("0.01"))
 
 
 def recommend_prompt_cache(
@@ -129,9 +127,7 @@ def recommend_prompt_cache(
     system prompt, tool definitions, few-shot — because those are what a prefix
     cache can actually cover.
     """
-    by_template: dict[str, dict[str, object]] = defaultdict(
-        lambda: {"calls": 0, "static": [], "cost": ZERO}
-    )
+    by_template: dict[str, dict[str, object]] = defaultdict(lambda: {"calls": 0, "static": [], "cost": ZERO})
     for event in events:
         if event.tokens.cached_input > 0:
             continue  # already caching
@@ -262,7 +258,7 @@ def recommend_response_cache(
                 rationale=(
                     f"{len(repeated)} distinct prompts in '{scope}' were re-sent to the provider "
                     f"{duplicate_calls:,} times beyond their first call "
-                    f"(typically every {typical_gap/60:.1f} minutes). "
+                    f"(typically every {typical_gap / 60:.1f} minutes). "
                     f"Most repeated: {', '.join(f'{fp} x{len(g)}' for fp, g in top)}."
                 ),
                 estimated_monthly_savings=monthly,
@@ -338,7 +334,7 @@ def recommend_semantic_cache(
                 tier="semantic_cache",
                 scope_key=feature,
                 rationale=(
-                    f"'{feature}' shows {repeat_rate*100:.0f}% byte-identical repeats across "
+                    f"'{feature}' shows {repeat_rate * 100:.0f}% byte-identical repeats across "
                     f"{distinct:,} distinct prompts, so users are asking the same questions in "
                     "varying phrasings. Semantic matching captures the near-duplicates that "
                     "exact caching misses."
@@ -373,9 +369,7 @@ def recommend_embedding_cache(
     if repeats < 10:
         return []
 
-    spend = sum(
-        (costs[str(e.id)].total for e in embedding_events if str(e.id) in costs), ZERO
-    )
+    spend = sum((costs[str(e.id)].total for e in embedding_events if str(e.id) in costs), ZERO)
     total = sum(fingerprints.values())
     recoverable = spend * safe_div(Decimal(repeats), Decimal(max(total, 1)))
     window = _window_days(embedding_events)
@@ -405,9 +399,7 @@ def recommend_embedding_cache(
     ]
 
 
-def measure_performance(
-    events: list[UsageEvent], costs: dict[str, CostBreakdown]
-) -> CachePerformance:
+def measure_performance(events: list[UsageEvent], costs: dict[str, CostBreakdown]) -> CachePerformance:
     """Realised vs. missed caching value over the window."""
     perf = CachePerformance()
     cacheable_spend: Decimal = ZERO

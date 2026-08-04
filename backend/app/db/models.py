@@ -96,9 +96,7 @@ class Organization(Base, TimestampMixin):
     slug: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
     #: Negotiated discount applied across all rate cards for this tenant.
-    discount_multiplier: Mapped[Decimal] = mapped_column(
-        Numeric(6, 4), nullable=False, default=Decimal("1")
-    )
+    discount_multiplier: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False, default=Decimal("1"))
     data_residency: Mapped[str | None] = mapped_column(String(32))
     settings: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -212,9 +210,7 @@ class ApiKey(Base, TimestampMixin):
 
 class ModelCatalog(Base, TimestampMixin):
     __tablename__ = "model_catalog"
-    __table_args__ = (
-        UniqueConstraint("provider", "model", name="uq_model_catalog_provider_model"),
-    )
+    __table_args__ = (UniqueConstraint("provider", "model", name="uq_model_catalog_provider_model"),)
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     provider: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
@@ -222,9 +218,7 @@ class ModelCatalog(Base, TimestampMixin):
     model_type: Mapped[str] = mapped_column(String(32), nullable=False)
     context_window: Mapped[int] = mapped_column(Integer, nullable=False, default=128_000)
     max_output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=16_384)
-    quality_index: Mapped[Decimal] = mapped_column(
-        Numeric(4, 3), nullable=False, default=Decimal("0.75")
-    )
+    quality_index: Mapped[Decimal] = mapped_column(Numeric(4, 3), nullable=False, default=Decimal("0.75"))
     latency_ms_per_1k_output: Mapped[int] = mapped_column(Integer, nullable=False, default=1000)
     supports_prompt_cache: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     supports_batch: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -240,8 +234,9 @@ class ModelPricing(Base, TimestampMixin):
     __tablename__ = "model_pricing"
     __table_args__ = (
         Index("ix_model_pricing_lookup", "provider", "model", "effective_from"),
-        CheckConstraint("effective_to IS NULL OR effective_to > effective_from",
-                        name="ck_model_pricing_valid_range"),
+        CheckConstraint(
+            "effective_to IS NULL OR effective_to > effective_from", name="ck_model_pricing_valid_range"
+        ),
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
@@ -250,9 +245,7 @@ class ModelPricing(Base, TimestampMixin):
     #: Per-1M-token rates keyed by token class, matching the provider's own
     #: published unit so a human can diff it against a pricing page.
     rates: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    per_request: Mapped[Decimal] = mapped_column(
-        Numeric(20, 10), nullable=False, default=Decimal("0")
-    )
+    per_request: Mapped[Decimal] = mapped_column(Numeric(20, 10), nullable=False, default=Decimal("0"))
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
     effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     effective_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -275,26 +268,30 @@ class UsageEventRow(Base):
     __tablename__ = "usage_events"
     __table_args__ = (
         UniqueConstraint(
-            "organization_id", "idempotency_key", "occurred_at",
+            "organization_id",
+            "idempotency_key",
+            "occurred_at",
             name="uq_usage_events_idempotency",
         ),
         Index("ix_usage_events_org_time", "organization_id", "occurred_at"),
         Index("ix_usage_events_model_time", "organization_id", "provider", "model", "occurred_at"),
         Index("ix_usage_events_team_time", "organization_id", "team_id", "occurred_at"),
         Index("ix_usage_events_feature_time", "organization_id", "feature", "occurred_at"),
-        Index("ix_usage_events_conversation", "conversation_id",
-              postgresql_where="conversation_id IS NOT NULL"),
-        Index("ix_usage_events_agent_run", "agent_run_id",
-              postgresql_where="agent_run_id IS NOT NULL"),
-        Index("ix_usage_events_fingerprint", "organization_id", "prompt_fingerprint",
-              postgresql_where="prompt_fingerprint IS NOT NULL"),
+        Index(
+            "ix_usage_events_conversation", "conversation_id", postgresql_where="conversation_id IS NOT NULL"
+        ),
+        Index("ix_usage_events_agent_run", "agent_run_id", postgresql_where="agent_run_id IS NOT NULL"),
+        Index(
+            "ix_usage_events_fingerprint",
+            "organization_id",
+            "prompt_fingerprint",
+            postgresql_where="prompt_fingerprint IS NOT NULL",
+        ),
         {"postgresql_partition_by": "RANGE (occurred_at)"},
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    occurred_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), primary_key=True, nullable=False
-    )
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True, nullable=False)
     organization_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     idempotency_key: Mapped[str | None] = mapped_column(String(128))
 
@@ -351,9 +348,7 @@ class UsageEventRow(Base):
     prompt_version: Mapped[str | None] = mapped_column(String(40))
     #: Hash only — never prompt text. See prompt_optimizer.py on privacy.
     prompt_fingerprint: Mapped[str | None] = mapped_column(String(64))
-    served_from_semantic_cache: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False
-    )
+    served_from_semantic_cache: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # Resolved cost, denormalised onto the event. See cost_engine.py for why
     # pricing happens at write time.
@@ -362,9 +357,7 @@ class UsageEventRow(Base):
     infrastructure_cost: Mapped[Decimal] = mapped_column(
         Numeric(20, 10), nullable=False, default=Decimal("0")
     )
-    cache_savings: Mapped[Decimal] = mapped_column(
-        Numeric(20, 10), nullable=False, default=Decimal("0")
-    )
+    cache_savings: Mapped[Decimal] = mapped_column(Numeric(20, 10), nullable=False, default=Decimal("0"))
     cost_by_token_class: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     rate_card_version: Mapped[str | None] = mapped_column(String(120))
     is_wasted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -385,8 +378,14 @@ class UsageRollupDaily(Base):
     __tablename__ = "usage_rollup_daily"
     __table_args__ = (
         UniqueConstraint(
-            "organization_id", "bucket_date", "department_id", "team_id",
-            "provider", "model", "feature", "environment",
+            "organization_id",
+            "bucket_date",
+            "department_id",
+            "team_id",
+            "provider",
+            "model",
+            "feature",
+            "environment",
             name="uq_rollup_daily_grain",
         ),
         Index("ix_rollup_daily_org_date", "organization_id", "bucket_date"),
@@ -413,9 +412,7 @@ class UsageRollupDaily(Base):
     total_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     total_cost: Mapped[Decimal] = mapped_column(Numeric(20, 10), nullable=False, default=Decimal("0"))
     wasted_cost: Mapped[Decimal] = mapped_column(Numeric(20, 10), nullable=False, default=Decimal("0"))
-    cache_savings: Mapped[Decimal] = mapped_column(
-        Numeric(20, 10), nullable=False, default=Decimal("0")
-    )
+    cache_savings: Mapped[Decimal] = mapped_column(Numeric(20, 10), nullable=False, default=Decimal("0"))
     latency_ms_sum: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     #: Stored so p95 can be reported without re-reading raw events. Computed
     #: from a t-digest sketch in the worker; the sketch itself lives in JSONB
@@ -430,9 +427,7 @@ class UsageRollupDaily(Base):
 
 class BudgetRow(Base, TimestampMixin):
     __tablename__ = "budgets"
-    __table_args__ = (
-        Index("ix_budgets_org_scope", "organization_id", "scope", "scope_id"),
-    )
+    __table_args__ = (Index("ix_budgets_org_scope", "organization_id", "scope", "scope_id"),)
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -538,8 +533,9 @@ class AnomalyRow(Base, TimestampMixin):
 class ForecastRow(Base, TimestampMixin):
     __tablename__ = "forecasts"
     __table_args__ = (
-        UniqueConstraint("organization_id", "scope", "scope_id", "generated_for",
-                         name="uq_forecast_scope_date"),
+        UniqueConstraint(
+            "organization_id", "scope", "scope_id", "generated_for", name="uq_forecast_scope_date"
+        ),
         Index("ix_forecasts_org_scope", "organization_id", "scope", "scope_id"),
     )
 
@@ -560,9 +556,7 @@ class ForecastRow(Base, TimestampMixin):
 
 class PromptTemplate(Base, TimestampMixin):
     __tablename__ = "prompt_templates"
-    __table_args__ = (
-        UniqueConstraint("organization_id", "slug", name="uq_prompt_template_slug"),
-    )
+    __table_args__ = (UniqueConstraint("organization_id", "slug", name="uq_prompt_template_slug"),)
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -600,18 +594,14 @@ class PromptVersion(Base, TimestampMixin):
     body: Mapped[str | None] = mapped_column(Text)
     token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     static_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    efficiency_score: Mapped[Decimal] = mapped_column(
-        Numeric(5, 2), nullable=False, default=Decimal("0")
-    )
+    efficiency_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0"))
     analysis: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 class QualityScore(Base, TimestampMixin):
     __tablename__ = "quality_scores"
-    __table_args__ = (
-        Index("ix_quality_subject", "organization_id", "subject", "dimension", "measured_at"),
-    )
+    __table_args__ = (Index("ix_quality_subject", "organization_id", "subject", "dimension", "measured_at"),)
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -643,9 +633,7 @@ class AuditLog(Base):
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     organization_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
-    occurred_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_now
-    )
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     actor_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
     actor_email: Mapped[str | None] = mapped_column(String(320))
     action: Mapped[str] = mapped_column(String(80), nullable=False)
@@ -663,8 +651,9 @@ class ApprovalRequestRow(Base, TimestampMixin):
     __tablename__ = "approval_requests"
     __table_args__ = (
         Index("ix_approvals_org_status", "organization_id", "status"),
-        CheckConstraint("requester_id <> approver_id OR approver_id IS NULL",
-                        name="ck_approval_segregation_of_duties"),
+        CheckConstraint(
+            "requester_id <> approver_id OR approver_id IS NULL", name="ck_approval_segregation_of_duties"
+        ),
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()

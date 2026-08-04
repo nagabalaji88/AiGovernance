@@ -156,10 +156,7 @@ def optimize_top_k(
             (rate for rank, rate in observed_citation_rate.items() if rank > proposed_k),
             ZERO,
         )
-        basis = (
-            f"Ranks beyond {proposed_k} were cited in under 2% of answers over the "
-            "observed window."
-        )
+        basis = f"Ranks beyond {proposed_k} were cited in under 2% of answers over the observed window."
     else:
         baseline = _recall_at(config.top_k)
         proposed_k = config.top_k
@@ -170,17 +167,13 @@ def optimize_top_k(
         requires_eval = True
         confidence = Decimal("0.5")
         recall_delta = _recall_at(proposed_k) - baseline
-        basis = (
-            "Estimated from a generic recall-at-k curve; no per-tenant citation data yet."
-        )
+        basis = "Estimated from a generic recall-at-k curve; no per-tenant citation data yet."
 
     if proposed_k >= config.top_k:
         return None
 
     saved = config.effective_chunk_tokens * (config.top_k - proposed_k)
-    monthly = quantize_cost(
-        Decimal(saved) * to_decimal(input_rate_per_token) * Decimal(monthly_requests)
-    )
+    monthly = quantize_cost(Decimal(saved) * to_decimal(input_rate_per_token) * Decimal(monthly_requests))
     return RagOptimization(
         lever="top_k",
         current=str(config.top_k),
@@ -216,12 +209,10 @@ def optimize_overlap(
         return None
 
     saved = (config.chunk_overlap - target_overlap) * config.top_k
-    monthly = quantize_cost(
-        Decimal(saved) * to_decimal(input_rate_per_token) * Decimal(monthly_requests)
-    )
+    monthly = quantize_cost(Decimal(saved) * to_decimal(input_rate_per_token) * Decimal(monthly_requests))
     return RagOptimization(
         lever="chunk_overlap",
-        current=f"{config.chunk_overlap} tokens ({config.chunk_overlap*100//config.chunk_size}%)",
+        current=f"{config.chunk_overlap} tokens ({config.chunk_overlap * 100 // config.chunk_size}%)",
         proposed=f"{target_overlap} tokens (15%)",
         tokens_saved_per_request=saved,
         monthly_savings=monthly,
@@ -264,9 +255,7 @@ def optimize_chunk_size(
     if saved <= 0:
         return None
 
-    monthly = quantize_cost(
-        Decimal(saved) * to_decimal(input_rate_per_token) * Decimal(monthly_requests)
-    )
+    monthly = quantize_cost(Decimal(saved) * to_decimal(input_rate_per_token) * Decimal(monthly_requests))
     return RagOptimization(
         lever="chunk_size",
         current=f"{config.chunk_size} tokens",
@@ -314,7 +303,7 @@ def recommend_reranker(
     return RagOptimization(
         lever="reranker",
         current=f"no reranker, top_k={config.top_k}",
-        proposed=f"cross-encoder reranker, retrieve {config.top_k*2}, inject {proposed_k}",
+        proposed=f"cross-encoder reranker, retrieve {config.top_k * 2}, inject {proposed_k}",
         tokens_saved_per_request=saved_tokens,
         monthly_savings=monthly,
         estimated_recall_delta=Decimal("0.02"),
@@ -350,9 +339,7 @@ def recommend_embedding_downgrade(
     """
     if candidate_rate >= current_rate:
         return None
-    saved = (to_decimal(current_rate) - to_decimal(candidate_rate)) * Decimal(
-        monthly_embedding_tokens
-    )
+    saved = (to_decimal(current_rate) - to_decimal(candidate_rate)) * Decimal(monthly_embedding_tokens)
     monthly = quantize_cost(saved)
     if monthly < Decimal("10"):
         return None
@@ -394,9 +381,7 @@ class RagAdvisory:
             (o.monthly_savings for o in self.optimizations if o.lever in exclusive),
             default=ZERO,
         )
-        independent = sum(
-            (o.monthly_savings for o in self.optimizations if o.lever not in exclusive), ZERO
-        )
+        independent = sum((o.monthly_savings for o in self.optimizations if o.lever not in exclusive), ZERO)
         return quantize_cost(best_exclusive + independent)
 
     @property

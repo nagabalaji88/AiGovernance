@@ -126,9 +126,7 @@ class TestOptimization:
             assert float(row["estimated_monthly_savings"]) > 0
             assert row["rationale"]
 
-    def test_prompt_analysis_returns_findings_without_echoing_text(
-        self, client: TestClient
-    ) -> None:
+    def test_prompt_analysis_returns_findings_without_echoing_text(self, client: TestClient) -> None:
         secret = "Please kindly ensure that account 4111-1111-1111-1111 is verified. " * 6
         body = client.post(
             f"{API}/optimize/prompt",
@@ -152,9 +150,7 @@ class TestOptimization:
         assert body["selected"]
         assert body["rationale"]
         assert float(body["savings_vs_baseline"]) >= 0
-        assert set(body["selected"]["factors"]) == {
-            "cost", "latency", "quality", "reliability"
-        }
+        assert set(body["selected"]["factors"]) == {"cost", "latency", "quality", "reliability"}
 
     def test_routing_respects_a_provider_allow_list(self, client: TestClient) -> None:
         body = client.post(
@@ -172,20 +168,19 @@ class TestOptimization:
         body = client.post(
             f"{API}/optimize/rag",
             json={
-                "chunk_size": 1024, "chunk_overlap": 256, "top_k": 15,
+                "chunk_size": 1024,
+                "chunk_overlap": 256,
+                "top_k": 15,
                 "monthly_requests": 200_000,
             },
         ).json()
         naive = sum(float(o["monthly_savings"]) for o in body["optimizations"])
         assert float(body["total_monthly_savings"]) <= naive
-        assert float(body["safe_savings_no_evaluation_needed"]) <= float(
-            body["total_monthly_savings"]
-        )
+        assert float(body["safe_savings_no_evaluation_needed"]) <= float(body["total_monthly_savings"])
 
     def test_model_comparison_is_sorted_by_cost(self, client: TestClient) -> None:
         rows = client.get(
-            f"{API}/optimize/models/compare"
-            "?models=openai/gpt-5,openai/gpt-4.1-mini,anthropic/claude-sonnet-5"
+            f"{API}/optimize/models/compare?models=openai/gpt-5,openai/gpt-4.1-mini,anthropic/claude-sonnet-5"
         ).json()
         assert len(rows) == 3
         costs = [r["monthly_cost"] for r in rows]
@@ -201,10 +196,13 @@ class TestSimulation:
             f"{API}/simulate",
             json={
                 "profile": {
-                    "provider": "openai", "model": "gpt-4.1",
+                    "provider": "openai",
+                    "model": "gpt-4.1",
                     "monthly_requests": 100_000,
-                    "avg_input_tokens": 10_000, "avg_output_tokens": 800,
-                    "static_input_tokens": 4_000, "rag_input_tokens": 3_000,
+                    "avg_input_tokens": 10_000,
+                    "avg_output_tokens": 800,
+                    "static_input_tokens": 4_000,
+                    "rag_input_tokens": 3_000,
                 },
                 "levers": [{"type": "enable_prompt_cache", "hit_rate": "0.85"}],
                 "scenario_name": "prompt cache",
@@ -220,9 +218,11 @@ class TestSimulation:
             f"{API}/simulate",
             json={
                 "profile": {
-                    "provider": "openai", "model": "gpt-4.1",
+                    "provider": "openai",
+                    "model": "gpt-4.1",
                     "monthly_requests": 50_000,
-                    "avg_input_tokens": 8_000, "avg_output_tokens": 600,
+                    "avg_input_tokens": 8_000,
+                    "avg_output_tokens": 600,
                     "static_input_tokens": 3_000,
                 }
             },
@@ -235,9 +235,11 @@ class TestSimulation:
             f"{API}/simulate",
             json={
                 "profile": {
-                    "provider": "openai", "model": "gpt-4.1",
+                    "provider": "openai",
+                    "model": "gpt-4.1",
                     "monthly_requests": 1000,
-                    "avg_input_tokens": 1000, "avg_output_tokens": 100,
+                    "avg_input_tokens": 1000,
+                    "avg_output_tokens": 100,
                 },
                 "levers": [{"type": "switch_model"}],
             },
@@ -275,8 +277,11 @@ class TestGovernanceApi:
         created = client.post(
             f"{API}/governance/budgets",
             json={
-                "name": "Test budget", "scope": "feature", "scope_id": "faq-answering",
-                "amount": "5000", "period": "monthly",
+                "name": "Test budget",
+                "scope": "feature",
+                "scope_id": "faq-answering",
+                "amount": "5000",
+                "period": "monthly",
             },
         )
         assert created.status_code == 201
@@ -286,37 +291,39 @@ class TestGovernanceApi:
         body = client.post(
             f"{API}/governance/preflight",
             json={
-                "provider": "openai", "model": "gpt-4.1",
-                "estimated_input_tokens": 2000, "estimated_output_tokens": 400,
+                "provider": "openai",
+                "model": "gpt-4.1",
+                "estimated_input_tokens": 2000,
+                "estimated_output_tokens": 400,
             },
         ).json()
         assert body["allowed"]
         assert float(body["estimated_cost"]) > 0
 
-    def test_preflight_blocks_a_request_over_the_context_ceiling(
-        self, client: TestClient
-    ) -> None:
+    def test_preflight_blocks_a_request_over_the_context_ceiling(self, client: TestClient) -> None:
         """The seeded policy caps context at 400k tokens; 500k must be refused."""
         body = client.post(
             f"{API}/governance/preflight",
             json={
-                "provider": "anthropic", "model": "claude-opus-5",
-                "estimated_input_tokens": 500_000, "estimated_output_tokens": 10_000,
+                "provider": "anthropic",
+                "model": "claude-opus-5",
+                "estimated_input_tokens": 500_000,
+                "estimated_output_tokens": 10_000,
             },
         ).json()
         assert not body["allowed"]
         assert body["action"] == "block"
         assert any("context" in reason.lower() for reason in body["reasons"])
 
-    def test_preflight_requires_approval_above_the_spend_threshold(
-        self, client: TestClient
-    ) -> None:
+    def test_preflight_requires_approval_above_the_spend_threshold(self, client: TestClient) -> None:
         """The seeded policy requires sign-off above $3 per request."""
         body = client.post(
             f"{API}/governance/preflight",
             json={
-                "provider": "anthropic", "model": "claude-opus-5",
-                "estimated_input_tokens": 400_000, "estimated_output_tokens": 60_000,
+                "provider": "anthropic",
+                "model": "claude-opus-5",
+                "estimated_input_tokens": 400_000,
+                "estimated_output_tokens": 60_000,
             },
         ).json()
         assert body["action"] == "require_approval"
@@ -326,21 +333,23 @@ class TestGovernanceApi:
         body = client.post(
             f"{API}/governance/preflight",
             json={
-                "provider": "openai", "model": "gpt-4.1",
-                "estimated_input_tokens": 1000, "estimated_output_tokens": 200,
+                "provider": "openai",
+                "model": "gpt-4.1",
+                "estimated_input_tokens": 1000,
+                "estimated_output_tokens": 200,
             },
         ).json()
         assert body["evaluated_in_ms"] < 50
 
-    def test_unknown_provider_does_not_block_production_traffic(
-        self, client: TestClient
-    ) -> None:
+    def test_unknown_provider_does_not_block_production_traffic(self, client: TestClient) -> None:
         """Never fail a customer's request because our catalog is stale."""
         body = client.post(
             f"{API}/governance/preflight",
             json={
-                "provider": "some-new-vendor", "model": "x",
-                "estimated_input_tokens": 100, "estimated_output_tokens": 50,
+                "provider": "some-new-vendor",
+                "model": "x",
+                "estimated_input_tokens": 100,
+                "estimated_output_tokens": 50,
             },
         ).json()
         assert body["allowed"]
@@ -358,7 +367,8 @@ class TestIngestion:
             json={
                 "events": [
                     {
-                        "provider": "openai", "model": "gpt-4.1",
+                        "provider": "openai",
+                        "model": "gpt-4.1",
                         "tokens": {"input": 1000, "output": 200},
                         "idempotency_key": "test-key-1",
                         "attribution": {"feature": "unit-test"},
@@ -374,7 +384,8 @@ class TestIngestion:
         payload = {
             "events": [
                 {
-                    "provider": "openai", "model": "gpt-4.1",
+                    "provider": "openai",
+                    "model": "gpt-4.1",
                     "tokens": {"input": 500, "output": 100},
                     "idempotency_key": "duplicate-check",
                 }
@@ -391,7 +402,8 @@ class TestIngestion:
             json={
                 "events": [
                     {
-                        "provider": "openai", "model": "gpt-99-unreleased",
+                        "provider": "openai",
+                        "model": "gpt-99-unreleased",
                         "tokens": {"input": 1000, "output": 200},
                     }
                 ]
@@ -407,7 +419,8 @@ class TestIngestion:
             json={
                 "events": [
                     {
-                        "provider": "not-a-provider", "model": "x",
+                        "provider": "not-a-provider",
+                        "model": "x",
                         "tokens": {"input": 10, "output": 5},
                     }
                 ]
@@ -422,7 +435,8 @@ class TestIngestion:
             json={
                 "events": [
                     {
-                        "provider": "openai", "model": "gpt-4.1",
+                        "provider": "openai",
+                        "model": "gpt-4.1",
                         "tokens": {"input": 10, "output": 5},
                         "attribution": {"tags": {f"k{i}": "v" for i in range(30)}},
                     }
@@ -437,7 +451,8 @@ class TestIngestion:
             json={
                 "events": [
                     {
-                        "provider": "openai", "model": "gpt-4.1",
+                        "provider": "openai",
+                        "model": "gpt-4.1",
                         "tokens": {"input": -100, "output": 5},
                     }
                 ]
@@ -453,9 +468,7 @@ class TestCatalog:
         providers = {r["provider"] for r in rows}
         assert {"openai", "anthropic", "google_gemini", "aws_bedrock"} <= providers
 
-    def test_every_entry_carries_pricing_and_capability_metadata(
-        self, client: TestClient
-    ) -> None:
+    def test_every_entry_carries_pricing_and_capability_metadata(self, client: TestClient) -> None:
         for row in client.get(f"{API}/catalog/models").json():
             assert row["context_window"] > 0
             assert 0 <= row["quality_index"] <= 1

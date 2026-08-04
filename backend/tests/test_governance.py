@@ -106,7 +106,9 @@ class TestBudgetStatus:
 class TestBudgetPeriods:
     def test_monthly_bounds(self) -> None:
         budget = Budget(
-            scope=BudgetScope.ORGANIZATION, scope_id="o", amount=Decimal("1"),
+            scope=BudgetScope.ORGANIZATION,
+            scope_id="o",
+            amount=Decimal("1"),
             period=BudgetPeriod.MONTHLY,
         )
         start, end = budget.period_bounds(date(2026, 2, 14))
@@ -115,7 +117,9 @@ class TestBudgetPeriods:
 
     def test_quarterly_bounds_across_a_year_boundary(self) -> None:
         budget = Budget(
-            scope=BudgetScope.ORGANIZATION, scope_id="o", amount=Decimal("1"),
+            scope=BudgetScope.ORGANIZATION,
+            scope_id="o",
+            amount=Decimal("1"),
             period=BudgetPeriod.QUARTERLY,
         )
         start, end = budget.period_bounds(date(2026, 11, 20))
@@ -124,7 +128,9 @@ class TestBudgetPeriods:
 
     def test_weekly_bounds_start_on_monday(self) -> None:
         budget = Budget(
-            scope=BudgetScope.ORGANIZATION, scope_id="o", amount=Decimal("1"),
+            scope=BudgetScope.ORGANIZATION,
+            scope_id="o",
+            amount=Decimal("1"),
             period=BudgetPeriod.WEEKLY,
         )
         start, end = budget.period_bounds(date(2026, 8, 5))  # a Wednesday
@@ -134,84 +140,93 @@ class TestBudgetPeriods:
 
 class TestPolicyEngine:
     def test_allows_a_compliant_request(self) -> None:
-        engine = PolicyEngine([
-            Policy(name="cap", action=EnforcementAction.BLOCK,
-                   max_cost_per_request=Decimal("10"))
-        ])
+        engine = PolicyEngine(
+            [Policy(name="cap", action=EnforcementAction.BLOCK, max_cost_per_request=Decimal("10"))]
+        )
         decision = engine.evaluate_request(intent())
         assert decision.allowed
         assert decision.action is EnforcementAction.ALLOW
 
     def test_blocks_an_oversized_request(self) -> None:
-        engine = PolicyEngine([
-            Policy(name="cap", action=EnforcementAction.BLOCK,
-                   max_cost_per_request=Decimal("0.01"))
-        ])
+        engine = PolicyEngine(
+            [Policy(name="cap", action=EnforcementAction.BLOCK, max_cost_per_request=Decimal("0.01"))]
+        )
         decision = engine.evaluate_request(intent())
         assert not decision.allowed
         assert decision.action is EnforcementAction.BLOCK
         assert "cap" in decision.violated_policies
 
     def test_strictest_action_wins_across_policies(self) -> None:
-        engine = PolicyEngine([
-            Policy(name="warn-only", action=EnforcementAction.WARN,
-                   max_tokens_per_request=100),
-            Policy(name="hard-block", action=EnforcementAction.BLOCK,
-                   max_cost_per_request=Decimal("0.001")),
-        ])
+        engine = PolicyEngine(
+            [
+                Policy(name="warn-only", action=EnforcementAction.WARN, max_tokens_per_request=100),
+                Policy(
+                    name="hard-block", action=EnforcementAction.BLOCK, max_cost_per_request=Decimal("0.001")
+                ),
+            ]
+        )
         decision = engine.evaluate_request(intent())
         assert decision.action is EnforcementAction.BLOCK
 
     def test_every_violated_rule_is_reported_not_just_the_deciding_one(self) -> None:
         """Fixing one reason then tripping the next destroys trust in the gate."""
-        engine = PolicyEngine([
-            Policy(name="tokens", action=EnforcementAction.WARN,
-                   max_tokens_per_request=100),
-            Policy(name="cost", action=EnforcementAction.BLOCK,
-                   max_cost_per_request=Decimal("0.001")),
-        ])
+        engine = PolicyEngine(
+            [
+                Policy(name="tokens", action=EnforcementAction.WARN, max_tokens_per_request=100),
+                Policy(name="cost", action=EnforcementAction.BLOCK, max_cost_per_request=Decimal("0.001")),
+            ]
+        )
         decision = engine.evaluate_request(intent())
         assert len(decision.reasons) == 2
         assert set(decision.violated_policies) == {"tokens", "cost"}
 
     def test_vendor_allow_list_is_enforced(self) -> None:
-        engine = PolicyEngine([
-            Policy(name="approved-vendors", action=EnforcementAction.BLOCK,
-                   allowed_providers={"anthropic"})
-        ])
+        engine = PolicyEngine(
+            [Policy(name="approved-vendors", action=EnforcementAction.BLOCK, allowed_providers={"anthropic"})]
+        )
         assert not engine.evaluate_request(intent(provider="openai")).allowed
         assert engine.evaluate_request(intent(provider="anthropic")).allowed
 
     def test_blocked_model_is_rejected(self) -> None:
-        engine = PolicyEngine([
-            Policy(name="deprecations", action=EnforcementAction.BLOCK,
-                   blocked_models={"gpt-4.1"})
-        ])
+        engine = PolicyEngine(
+            [Policy(name="deprecations", action=EnforcementAction.BLOCK, blocked_models={"gpt-4.1"})]
+        )
         assert not engine.evaluate_request(intent()).allowed
 
     def test_approval_threshold_yields_require_approval(self) -> None:
-        engine = PolicyEngine([
-            Policy(name="high-spend", action=EnforcementAction.WARN,
-                   require_approval_above=Decimal("0.01"))
-        ])
+        engine = PolicyEngine(
+            [Policy(name="high-spend", action=EnforcementAction.WARN, require_approval_above=Decimal("0.01"))]
+        )
         decision = engine.evaluate_request(intent())
         assert decision.action is EnforcementAction.REQUIRE_APPROVAL
         assert not decision.allowed
 
     def test_scoped_policy_only_applies_to_its_own_team(self) -> None:
-        engine = PolicyEngine([
-            Policy(name="team-cap", action=EnforcementAction.BLOCK,
-                   scope=BudgetScope.TEAM, scope_id="team-a",
-                   max_cost_per_request=Decimal("0.001"))
-        ])
+        engine = PolicyEngine(
+            [
+                Policy(
+                    name="team-cap",
+                    action=EnforcementAction.BLOCK,
+                    scope=BudgetScope.TEAM,
+                    scope_id="team-a",
+                    max_cost_per_request=Decimal("0.001"),
+                )
+            ]
+        )
         assert not engine.evaluate_request(intent(team_id="team-a")).allowed
         assert engine.evaluate_request(intent(team_id="team-b")).allowed
 
     def test_disabled_policy_is_inert(self) -> None:
-        engine = PolicyEngine([
-            Policy(name="off", action=EnforcementAction.BLOCK,
-                   max_cost_per_request=Decimal("0.001"), enabled=False)
-        ])
+        engine = PolicyEngine(
+            [
+                Policy(
+                    name="off",
+                    action=EnforcementAction.BLOCK,
+                    max_cost_per_request=Decimal("0.001"),
+                    enabled=False,
+                )
+            ]
+        )
         assert engine.evaluate_request(intent()).allowed
 
     def test_budget_overrun_applies_its_configured_action(self) -> None:
@@ -231,17 +246,16 @@ class TestPolicyEngine:
     def test_hard_stop_multiplier_blocks_severe_overruns(self) -> None:
         engine = PolicyEngine([])
         status = budget_status("1600", hard_stop_multiplier=Decimal("1.5"))
-        assert engine.evaluate_request(intent(), budget_status=status).action is (
-            EnforcementAction.BLOCK
-        )
+        assert engine.evaluate_request(intent(), budget_status=status).action is (EnforcementAction.BLOCK)
 
     def test_evaluation_is_fast_enough_for_the_hot_path(self) -> None:
         """SLO: p99 under 5ms. This runs the full policy set 1,000 times."""
-        engine = PolicyEngine([
-            Policy(name=f"p{i}", action=EnforcementAction.WARN,
-                   max_cost_per_request=Decimal("100"))
-            for i in range(20)
-        ])
+        engine = PolicyEngine(
+            [
+                Policy(name=f"p{i}", action=EnforcementAction.WARN, max_cost_per_request=Decimal("100"))
+                for i in range(20)
+            ]
+        )
         started = datetime.now(UTC)
         for _ in range(1_000):
             engine.evaluate_request(intent())
@@ -275,9 +289,7 @@ class TestChargeback:
         assert sum(line.total for line in lines) == Decimal("1250.0000000000")
 
     def test_lines_are_ranked_by_spend(self) -> None:
-        lines = build_chargeback(
-            {"small": Decimal("10"), "large": Decimal("900"), "mid": Decimal("100")}
-        )
+        lines = build_chargeback({"small": Decimal("10"), "large": Decimal("900"), "mid": Decimal("100")})
         assert [line.cost_center for line in lines] == ["large", "mid", "small"]
 
     def test_empty_input_does_not_divide_by_zero(self) -> None:
@@ -299,7 +311,9 @@ class TestApprovals:
 
     def test_approval_records_the_decision(self) -> None:
         request = ApprovalRequest(
-            requester_id=uuid4(), subject="s", estimated_cost=Decimal("1"),
+            requester_id=uuid4(),
+            subject="s",
+            estimated_cost=Decimal("1"),
             justification="j",
         )
         approver = uuid4()
@@ -310,7 +324,9 @@ class TestApprovals:
 
     def test_a_decided_request_cannot_be_re_decided(self) -> None:
         request = ApprovalRequest(
-            requester_id=uuid4(), subject="s", estimated_cost=Decimal("1"),
+            requester_id=uuid4(),
+            subject="s",
+            estimated_cost=Decimal("1"),
             justification="j",
         )
         request.decide(approver_id=uuid4(), approved=False)

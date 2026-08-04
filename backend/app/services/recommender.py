@@ -97,9 +97,7 @@ class Recommendation:
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     #: Recommendations decay: a finding from a workload that has since changed
     #: is worse than useless. Expired ones are re-derived, not resurrected.
-    expires_at: datetime = field(
-        default_factory=lambda: datetime.now(UTC) + timedelta(days=30)
-    )
+    expires_at: datetime = field(default_factory=lambda: datetime.now(UTC) + timedelta(days=30))
     blocked_by_quality: bool = False
     quality_note: str | None = None
 
@@ -312,9 +310,7 @@ def from_anomaly(anomaly: Anomaly) -> Recommendation | None:
     )
 
 
-def from_prompt_analysis(
-    payload: dict[str, object], *, scope_key: str
-) -> Recommendation | None:
+def from_prompt_analysis(payload: dict[str, object], *, scope_key: str) -> Recommendation | None:
     """Build a recommendation from `prompt_optimizer.suggest_compression` output."""
     monthly = Decimal(str(payload.get("monthly_savings", 0)))
     if monthly < Decimal("10"):
@@ -415,9 +411,7 @@ class RecommendationEngine:
         for scope_key, opt in rag_optimizations or []:
             collected.append(from_rag_optimization(opt, scope_key=scope_key))
         for scope_key, decision, monthly_requests in routing_decisions or []:
-            built = from_routing_decision(
-                decision, scope_key=scope_key, monthly_requests=monthly_requests
-            )
+            built = from_routing_decision(decision, scope_key=scope_key, monthly_requests=monthly_requests)
             if built:
                 collected.append(built)
         for anomaly in anomalies or []:
@@ -432,7 +426,8 @@ class RecommendationEngine:
         deduped = self._deduplicate(collected)
         gated = self._apply_quality_gate(deduped, quality_verdicts or {})
         filtered = [
-            r for r in gated
+            r
+            for r in gated
             if r.estimated_monthly_savings >= self.min_monthly_savings or r.blocked_by_quality
         ]
         filtered.sort(key=lambda r: r.priority_score, reverse=True)

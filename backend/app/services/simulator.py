@@ -156,8 +156,7 @@ class CompressPrompt(Lever):
         state.input_tokens -= removed
         state.quality_delta += self.quality_delta
         state.notes.append(
-            f"Compressed the dynamic prompt body by {self.reduction_pct}% "
-            f"({int(removed):,} tokens)."
+            f"Compressed the dynamic prompt body by {self.reduction_pct}% ({int(removed):,} tokens)."
         )
 
     def describe(self) -> str:
@@ -177,11 +176,11 @@ class EnablePromptCache(Lever):
         state.cached_input_tokens += moved
         state.notes.append(
             f"Moved {int(moved):,} static tokens to the prompt cache at a "
-            f"{self.hit_rate*100:.0f}% hit rate."
+            f"{self.hit_rate * 100:.0f}% hit rate."
         )
 
     def describe(self) -> str:
-        return f"Enable prompt caching ({self.hit_rate*100:.0f}% hit rate)"
+        return f"Enable prompt caching ({self.hit_rate * 100:.0f}% hit rate)"
 
 
 @dataclass(slots=True)
@@ -196,11 +195,11 @@ class EnableResponseCache(Lever):
         # which is why it is a request multiplier rather than a token change.
         state.request_multiplier *= Decimal("1") - self.hit_rate
         state.notes.append(
-            f"{self.hit_rate*100:.0f}% of requests served from cache and never sent to the provider."
+            f"{self.hit_rate * 100:.0f}% of requests served from cache and never sent to the provider."
         )
 
     def describe(self) -> str:
-        return f"Response cache at {self.hit_rate*100:.0f}% hit rate"
+        return f"Response cache at {self.hit_rate * 100:.0f}% hit rate"
 
 
 @dataclass(slots=True)
@@ -259,13 +258,13 @@ class BatchRequests(Lever):
         state.request_multiplier *= effective
         state.latency_multiplier *= Decimal("1") + self.eligible_ratio * Decimal("20")
         state.notes.append(
-            f"{self.eligible_ratio*100:.0f}% of traffic moved to the batch tier at a "
-            f"{self.discount*100:.0f}% discount. Batch latency is measured in hours — only "
+            f"{self.eligible_ratio * 100:.0f}% of traffic moved to the batch tier at a "
+            f"{self.discount * 100:.0f}% discount. Batch latency is measured in hours — only "
             "applicable to workloads with no interactive user waiting."
         )
 
     def describe(self) -> str:
-        return f"Batch {self.eligible_ratio*100:.0f}% of requests"
+        return f"Batch {self.eligible_ratio * 100:.0f}% of requests"
 
 
 @dataclass(slots=True)
@@ -339,9 +338,7 @@ class Simulator:
     def __init__(self, catalog: PricingCatalog | None = None) -> None:
         self.catalog = catalog or default_catalog
 
-    def run(
-        self, profile: WorkloadProfile, levers: list[Lever], *, name: str = "scenario"
-    ) -> ScenarioResult:
+    def run(self, profile: WorkloadProfile, levers: list[Lever], *, name: str = "scenario") -> ScenarioResult:
         """Apply levers in sequence and price the resulting state once."""
         baseline_cost = self._monthly_cost(
             profile.provider, profile.model, profile.tokens(), profile.monthly_requests
@@ -353,9 +350,7 @@ class Simulator:
 
         projected_tokens = state.to_tokens()
         effective_requests = int(Decimal(profile.monthly_requests) * state.request_multiplier)
-        projected_cost = self._monthly_cost(
-            state.provider, state.model, projected_tokens, effective_requests
-        )
+        projected_cost = self._monthly_cost(state.provider, state.model, projected_tokens, effective_requests)
 
         result = ScenarioResult(
             name=name,
@@ -371,9 +366,7 @@ class Simulator:
         result.warnings = self._warnings(profile, state, result)
         return result
 
-    def compare(
-        self, profile: WorkloadProfile, scenarios: dict[str, list[Lever]]
-    ) -> list[ScenarioResult]:
+    def compare(self, profile: WorkloadProfile, scenarios: dict[str, list[Lever]]) -> list[ScenarioResult]:
         """Run several scenarios and rank by saving, filtering rejected ones last."""
         results = [self.run(profile, levers, name=name) for name, levers in scenarios.items()]
         results.sort(
@@ -382,9 +375,7 @@ class Simulator:
         )
         return results
 
-    def _monthly_cost(
-        self, provider: Provider, model: str, tokens: TokenUsage, requests: int
-    ) -> Decimal:
+    def _monthly_cost(self, provider: Provider, model: str, tokens: TokenUsage, requests: int) -> Decimal:
         card = self.catalog.resolve(provider, model)
         if card is None:
             return ZERO
@@ -402,9 +393,7 @@ class Simulator:
         warnings: list[str] = []
         card = self.catalog.resolve(state.provider, state.model)
         if card is None:
-            warnings.append(
-                f"No rate card for {state.provider}/{state.model}; projected cost is unreliable."
-            )
+            warnings.append(f"No rate card for {state.provider}/{state.model}; projected cost is unreliable.")
             return warnings
 
         projected_context = int(state.input_tokens + state.output_tokens)

@@ -47,24 +47,18 @@ class TestBasicPricing:
         assert cost.by_token_class[TokenClass.OUTPUT] == Decimal("8.0000000000")
         assert cost.total == Decimal("10.0000000000")
 
-    def test_zero_count_classes_are_omitted_not_stored_as_zero(
-        self, engine: CostEngine
-    ) -> None:
+    def test_zero_count_classes_are_omitted_not_stored_as_zero(self, engine: CostEngine) -> None:
         """Keeps the persisted JSONB small at 10^9 rows."""
         cost = engine.price(make_event(tokens=TokenUsage(input=100, output=0)))
         assert TokenClass.OUTPUT not in cost.by_token_class
         assert TokenClass.REASONING not in cost.by_token_class
 
-    def test_unknown_model_raises_rather_than_pricing_at_zero(
-        self, engine: CostEngine
-    ) -> None:
+    def test_unknown_model_raises_rather_than_pricing_at_zero(self, engine: CostEngine) -> None:
         """Silent $0 pricing under-reports exactly the newest, priciest models."""
         with pytest.raises(UnknownModelError):
             engine.price(make_event(model="gpt-99-turbo"))
 
-    def test_non_strict_mode_marks_unpriced_instead_of_raising(
-        self, engine: CostEngine
-    ) -> None:
+    def test_non_strict_mode_marks_unpriced_instead_of_raising(self, engine: CostEngine) -> None:
         cost = engine.price(make_event(model="gpt-99-turbo"), strict=False)
         assert cost.total == Decimal("0")
         assert cost.rate_card_version == "unpriced"
@@ -109,18 +103,14 @@ class TestBillability:
 
 
 class TestCaching:
-    def test_cached_tokens_are_a_separate_cheaper_class_not_a_discount(
-        self, engine: CostEngine
-    ) -> None:
+    def test_cached_tokens_are_a_separate_cheaper_class_not_a_discount(self, engine: CostEngine) -> None:
         """Treating cached tokens as a subset of input mis-prices by up to 90%."""
         event = make_event(tokens=TokenUsage(input=0, output=0, cached_input=1_000_000))
         cost = engine.price(event)
         # gpt-4.1 cached input is $0.50/1M vs $2.00/1M full rate.
         assert cost.by_token_class[TokenClass.CACHED_INPUT] == Decimal("0.5000000000")
 
-    def test_uncached_equivalent_quantifies_the_realised_saving(
-        self, engine: CostEngine
-    ) -> None:
+    def test_uncached_equivalent_quantifies_the_realised_saving(self, engine: CostEngine) -> None:
         event = make_event(tokens=TokenUsage(input=0, output=0, cached_input=1_000_000))
         cost = engine.price(event)
         # Would have been $2.00 at the full input rate; paid $0.50.
@@ -144,9 +134,7 @@ class TestCaching:
 class TestSelfHosted:
     def test_gpu_time_is_priced_when_tokens_are_free(self) -> None:
         """Self-hosted cost is amortised GPU time, not metered tokens."""
-        engine = CostEngine(
-            infra_model=InfrastructureCostModel(gpu_hourly_rate=Decimal("3600"))
-        )
+        engine = CostEngine(infra_model=InfrastructureCostModel(gpu_hourly_rate=Decimal("3600")))
         event = make_event(
             provider=Provider.VLLM,
             model="llama-4-70b-local",
@@ -215,42 +203,34 @@ class TestDiscounts:
             discount_multiplier=Decimal("0.85"),
         )
         engine = CostEngine(catalog=PricingCatalog([card]))
-        cost = engine.price(
-            make_event(model="discounted", tokens=TokenUsage(input=1_000_000, output=0))
-        )
+        cost = engine.price(make_event(model="discounted", tokens=TokenUsage(input=1_000_000, output=0)))
         assert cost.total == Decimal("8.5000000000")
 
 
 class TestPrecision:
     def test_no_float_drift_across_large_aggregations(self, engine: CostEngine) -> None:
         """Decimal is exact under summation; float accumulates drift at 10^5+."""
-        events = [
-            make_event(tokens=TokenUsage(input=333, output=111)) for _ in range(100_000)
-        ]
+        events = [make_event(tokens=TokenUsage(input=333, output=111)) for _ in range(100_000)]
         costs = engine.price_many(events)
         total = sum(c.total for c in costs)
         single = costs[0].total
         assert total == single * 100_000
 
     def test_summarise_costs_reconciles_components(self, engine: CostEngine) -> None:
-        events = [
-            make_event(tokens=TokenUsage(input=1000, output=200, cached_input=500))
-            for _ in range(50)
-        ]
+        events = [make_event(tokens=TokenUsage(input=1000, output=200, cached_input=500)) for _ in range(50)]
         costs = engine.price_many(events)
         summary = summarise_costs(costs)
         assert summary["total_cost"] == sum(c.total for c in costs)
-        assert summary["token_cost"] + summary["infrastructure_cost"] + summary[
-            "request_fees"
-        ] == summary["total_cost"]
+        assert (
+            summary["token_cost"] + summary["infrastructure_cost"] + summary["request_fees"]
+            == summary["total_cost"]
+        )
 
 
 class TestEstimation:
     def test_estimate_matches_actual_pricing(self, engine: CostEngine) -> None:
         """The simulator's estimate must agree with what ingestion will charge."""
         tokens = TokenUsage(input=4000, output=800)
-        estimated = engine.estimate(
-            provider=Provider.OPENAI, model="gpt-4.1", tokens=tokens
-        )
+        estimated = engine.estimate(provider=Provider.OPENAI, model="gpt-4.1", tokens=tokens)
         actual = engine.price(make_event(tokens=tokens)).total
         assert estimated == actual

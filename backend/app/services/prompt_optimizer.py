@@ -124,9 +124,7 @@ class PromptAnalysis:
 
     def savings(self, rate_per_token: Decimal, calls_per_month: int) -> Decimal:
         """Monthly dollar value of acting on every finding."""
-        return quantize_cost(
-            Decimal(self.recoverable_tokens) * rate_per_token * Decimal(calls_per_month)
-        )
+        return quantize_cost(Decimal(self.recoverable_tokens) * rate_per_token * Decimal(calls_per_month))
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -238,7 +236,7 @@ def find_repeated_instructions(text: str, *, similarity: Decimal = Decimal("0.6"
                         # without it ever leaving their browser.
                         detail=(
                             f"Restates the instruction at character {prior_offset} "
-                            f"({overlap*100:.0f}% word overlap); the model gains nothing "
+                            f"({overlap * 100:.0f}% word overlap); the model gains nothing "
                             "from the repetition."
                         ),
                         tokens_saved=_tokens_for(sentence),
@@ -283,9 +281,7 @@ def find_duplicate_context(text: str, *, min_block_chars: int = 120) -> list[Fin
     return findings
 
 
-def find_excess_few_shot(
-    text: str, *, example_marker: str = "Example", max_useful: int = 3
-) -> list[Finding]:
+def find_excess_few_shot(text: str, *, example_marker: str = "Example", max_useful: int = 3) -> list[Finding]:
     """Few-shot examples beyond the point of diminishing returns.
 
     Published few-shot scaling results converge by roughly 3-5 examples for
