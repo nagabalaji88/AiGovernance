@@ -1,0 +1,230 @@
+# Namespace, configuration, network policy and the frontend deployment.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aicost
+  labels:
+    # Enforce the restricted Pod Security Standard at the namespace level. This
+    # is the backstop that makes the per-pod securityContext settings
+    # non-optional: a manifest that forgets them is rejected at admission
+    # rather than silently running privileged.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aicost-config
+  namespace: aicost
+data:
+  API_V1_PREFIX: /api/v1
+  # Docs are disabled in production: the OpenAPI schema enumerates every
+  # endpoint and field, which is free reconnaissance. It is published to the
+  # internal developer portal from CI instead.
+  DOCS_ENABLED: "false"
+  LOG_LEVEL: INFO
+  LOG_FORMAT: json
+  DB_POOL_SIZE: "20"
+  DB_MAX_OVERFLOW: "10"
+  # Below typical cloud load-balancer idle timeouts (~350s) so the pool never
+  # hands out a connection the network has already dropped.
+  DB_POOL_RECYCLE: "300"
+  PRICING_REFRESH_SECONDS: "300"
+  MAX_EVENT_AGE_HOURS: "72"
+  POLICY_FAIL_OPEN: "true"
+  POLICY_EVALUATION_TIMEOUT_MS: "50"
+  TRACE_SAMPLE_RATIO: "0.05"
+  RATE_LIMIT_PER_MINUTE: "600"
+  INGEST_RATE_LIMIT_PER_MINUTE: "60000"
+  OTEL_SERVICE_NAME: aicost-api
+
+---
+# Secrets are synchronised from the cloud secret store by the External Secrets
+# Operator. No secret material is committed here; this object only declares
+# which keys to pull and where from.
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: aicost-secrets
+  namespace: aicost
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { name: cluster-secret-store, kind: ClusterSecretStore }
+  target:
+    name: aicost-secrets
+    creationPolicy: Owner
+  data:
+    - secretKey: SECRET_KEY
+      remoteRef: { key: aicost/production, property: jwt_signing_key }
+    - secretKey: DATABASE_URL
+      remoteRef: { key: aicost/production, property: database_url }
+    - secretKey: REDIS_URL
+      remoteRef: { key: aicost/production, property: redis_url }
+    - secretKey: CELERY_BROKER_URL
+      remoteRef: { key: aicost/production, property: celery_broker_url }
+    - secretKey: OIDC_CLIENT_SECRET
+      remoteRef: { key: aicost/production, property: oidc_client_secret }
+
+---
+# Default-deny egress. A cost-governance platform holds a complete map of an
+# enterprise's AI usage; the blast radius of a compromise is bounded by what
+# the pod can reach. Everything permitted is enumerated below.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aicost-api-egress
+  namespace: aicost
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: aicost-api }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: postgres }
+      ports: [{ protocol: TCP, port: 5432 }]
+    - to:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: redis }
+      ports: [{ protocol: TCP, port: 6379 }]
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: observability }
+      ports: [{ protocol: TCP, port: 4317 }]
+    # DNS, without which nothing above resolves.
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # Outbound HTTPS for provider pricing sync. Egress to the public internet
+    # is restricted to 443; the pricing sync job is the only thing that needs
+    # it, and it reads published price lists only.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              # Block the cloud metadata endpoint. Reaching it from an
+              # application pod is a credential-theft primitive (SSRF to
+              # instance role), never a legitimate need.
+              - 169.254.169.254/32
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports: [{ protocol: TCP, port: 443 }]
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aicost-api-ingress
+  namespace: aicost
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: aicost-api }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: ingress-nginx }
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: aicost-frontend }
+      ports: [{ protocol: TCP, port: 8000 }]
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: observability }
+      ports: [{ protocol: TCP, port: 8000 }]
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aicost-frontend
+  namespace: aicost
+  labels:
+    app.kubernetes.io/name: aicost-frontend
+    app.kubernetes.io/component: web
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app.kubernetes.io/name: aicost-frontend }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: aicost-frontend }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: web
+          image: ghcr.io/acme/aicost-frontend:1.0.0
+          ports: [{ name: http, containerPort: 8080 }]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 128Mi }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: cache, mountPath: /var/cache/nginx }
+            - { name: run, mountPath: /var/run }
+      volumes:
+        - { name: cache, emptyDir: { sizeLimit: 64Mi } }
+        - { name: run, emptyDir: { sizeLimit: 8Mi } }
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aicost-frontend
+  namespace: aicost
+spec:
+  type: ClusterIP
+  selector: { app.kubernetes.io/name: aicost-frontend }
+  ports: [{ name: http, port: 80, targetPort: http }]
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aicost
+  namespace: aicost
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-production
+    nginx.ingress.kubernetes.io/proxy-body-size: 8m
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/hsts: "true"
+    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [aicost.example.com]
+      secretName: aicost-tls
+  rules:
+    - host: aicost.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service: { name: aicost-api, port: { number: 80 } }
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: aicost-frontend, port: { number: 80 } }

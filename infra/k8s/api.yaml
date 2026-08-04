@@ -1,0 +1,188 @@
+# API deployment.
+#
+# Decisions worth stating, because each is load-bearing:
+#
+# - **No CPU limit.** CPU requests reserve capacity; CPU *limits* cause CFS
+#   throttling, which on a latency-sensitive async service produces exactly the
+#   p99 spikes people then spend weeks chasing. Memory is limited (it is
+#   incompressible — exceed it and the kernel must act), CPU is not.
+# - **Readiness and liveness differ.** Liveness is dependency-free, so a
+#   database incident degrades the read path instead of triggering a rolling
+#   restart of every pod and converting it into a full outage.
+# - **PDB minAvailable, not maxUnavailable.** During a node drain this
+#   guarantees an absolute floor of serving capacity regardless of how the
+#   HPA has scaled.
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aicost-api
+  namespace: aicost
+  labels: { app.kubernetes.io/name: aicost-api }
+automountServiceAccountToken: false
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aicost-api
+  namespace: aicost
+  labels:
+    app.kubernetes.io/name: aicost-api
+    app.kubernetes.io/component: api
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      # Zero unavailable: capacity never dips below the current replica count
+      # mid-deploy, so a rollout cannot itself cause a latency regression.
+      maxUnavailable: 0
+  selector:
+    matchLabels: { app.kubernetes.io/name: aicost-api }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aicost-api
+        app.kubernetes.io/component: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: /metrics
+    spec:
+      serviceAccountName: aicost-api
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      # Spread across zones so a single-AZ failure cannot take the whole
+      # service. ScheduleAnyway rather than DoNotSchedule: during a zone
+      # outage, degraded balance beats unschedulable pods.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app.kubernetes.io/name: aicost-api }
+      containers:
+        - name: api
+          image: ghcr.io/acme/aicost-api:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 8000 }
+          env:
+            - { name: ENVIRONMENT, value: production }
+            - { name: WEB_CONCURRENCY, value: "4" }
+            - { name: LOG_FORMAT, value: json }
+            - name: OTEL_EXPORTER_ENDPOINT
+              value: http://otel-collector.observability:4317
+          envFrom:
+            - configMapRef: { name: aicost-config }
+            # Populated by the External Secrets Operator from the cloud secret
+            # store; never committed and never present in the image.
+            - secretRef: { name: aicost-secrets }
+          resources:
+            requests: { cpu: 500m, memory: 512Mi }
+            limits: { memory: 1Gi } # deliberately no CPU limit — see header
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 2
+          # Startup probe gives a slow first boot (pricing catalog load, pool
+          # warm-up) up to 60s without weakening the liveness thresholds that
+          # protect the steady state.
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 3
+            failureThreshold: 20
+          lifecycle:
+            preStop:
+              # Sleep past the endpoint-propagation delay so in-flight requests
+              # drain before the process exits. Without it, a rollout produces
+              # a burst of connection resets from pods removed from the
+              # Service but still receiving traffic.
+              exec: { command: ["sh", "-c", "sleep 8"] }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      # readOnlyRootFilesystem needs an explicit writable /tmp for the
+      # interpreter and any temporary spooling.
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
+      terminationGracePeriodSeconds: 45
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aicost-api
+  namespace: aicost
+  labels: { app.kubernetes.io/name: aicost-api }
+spec:
+  type: ClusterIP
+  selector: { app.kubernetes.io/name: aicost-api }
+  ports:
+    - { name: http, port: 80, targetPort: http }
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: aicost-api
+  namespace: aicost
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: aicost-api }
+  minReplicas: 3
+  maxReplicas: 30
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }
+    # Scale on in-flight requests as well as CPU: an async service saturates on
+    # concurrency long before CPU, so a CPU-only policy under-provisions during
+    # a latency incident precisely when headroom is most needed.
+    - type: Pods
+      pods:
+        metric: { name: http_requests_in_flight }
+        target: { type: AverageValue, averageValue: "40" }
+  behavior:
+    scaleUp:
+      # React fast to load, with a short window so a burst is met promptly.
+      stabilizationWindowSeconds: 30
+      policies:
+        - { type: Percent, value: 100, periodSeconds: 30 }
+    scaleDown:
+      # Scale down slowly. Aggressive scale-down after a traffic dip means the
+      # next spike lands on an under-provisioned service, and the cost of a few
+      # idle pods is trivial next to the incident it prevents.
+      stabilizationWindowSeconds: 600
+      policies:
+        - { type: Percent, value: 25, periodSeconds: 120 }
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: aicost-api
+  namespace: aicost
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels: { app.kubernetes.io/name: aicost-api }

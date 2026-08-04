@@ -1,0 +1,39 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+
+# ---- Node ----
+node_modules/
+.pnpm-store/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*
+
+# ---- Editors / OS ----
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ---- Local infra state ----
+.docker-data/
+*.local.yaml
+secrets/
+!secrets/.gitkeep
