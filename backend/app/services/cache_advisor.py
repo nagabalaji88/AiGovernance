@@ -30,8 +30,8 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
-from itertools import pairwise
 from statistics import median
+from typing import Union
 
 from app.domain.money import ZERO, quantize_cost, safe_div
 from app.domain.usage import CostBreakdown, UsageEvent
@@ -46,7 +46,7 @@ DEFAULT_SEMANTIC_THRESHOLD = Decimal("0.97")
 MIN_CACHEABLE_PREFIX_TOKENS = 1_024
 
 
-@dataclass(slots=True)
+@dataclass
 class CacheRecommendation:
     tier: str
     scope_key: str
@@ -72,7 +72,7 @@ class CacheRecommendation:
         }
 
 
-@dataclass(slots=True)
+@dataclass
 class CachePerformance:
     """Realised performance of caching already in place."""
 
@@ -239,7 +239,7 @@ def recommend_response_cache(
             duplicate_calls += len(group) - 1
             total_calls += len(group)
             ordered = sorted(e.occurred_at for e in group)
-            gaps.extend((b - a).total_seconds() for a, b in pairwise(ordered))
+            gaps.extend((b - a).total_seconds() for a, b in zip(ordered, ordered[1:]))
 
         monthly = _to_monthly(recoverable, window)
         if monthly < Decimal("5"):
@@ -434,7 +434,7 @@ def measure_performance(events: list[UsageEvent], costs: dict[str, CostBreakdown
 
 
 def advise(
-    events: list[UsageEvent], costs: dict[str, CostBreakdown] | list[CostBreakdown]
+    events: list[UsageEvent], costs: Union[dict[str, CostBreakdown], list[CostBreakdown]]
 ) -> list[CacheRecommendation]:
     """Full cache advisory, ranked by monthly value."""
     cost_map = costs if isinstance(costs, dict) else {str(c.event_id): c for c in costs}

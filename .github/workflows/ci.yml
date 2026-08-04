@@ -25,7 +25,7 @@ permissions:
   contents: read
 
 env:
-  PYTHON_VERSION: "3.11"
+  PYTHON_VERSION: "3.9"
   NODE_VERSION: "22"
 
 jobs:
@@ -59,13 +59,21 @@ jobs:
         run: mypy app
 
   backend-test:
-    name: Backend tests
+    name: Backend tests (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both ends of the supported range. Testing only the floor lets 3.9-only
+        # regressions through on modern syntax; testing only the ceiling lets the
+        # PEP 604 / StrEnum / dataclass-slots breakage this project just removed
+        # creep straight back in. The middle versions are interpolation.
+        python-version: ["3.9", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: ${{ matrix.python-version }}
           cache: pip
       - name: Install
         working-directory: backend

@@ -30,9 +30,9 @@ the negotiated adjustment per tenant.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Final
+from typing import Final, Optional
 
 from app.domain.enums import ModelType, Provider, TokenClass
 from app.domain.money import ZERO, to_decimal
@@ -40,10 +40,10 @@ from app.domain.money import ZERO, to_decimal
 #: Provider price lists are quoted per 1M tokens; we store the same unit.
 TOKENS_PER_PRICING_UNIT: Final[Decimal] = Decimal("1000000")
 
-_EPOCH: Final[datetime] = datetime(2020, 1, 1, tzinfo=UTC)
+_EPOCH: Final[datetime] = datetime(2020, 1, 1, tzinfo=timezone.utc)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class RateCard:
     """Effective-dated price list for one model.
 
@@ -62,7 +62,7 @@ class RateCard:
     per_request: Decimal = ZERO
     currency: str = "USD"
     effective_from: datetime = _EPOCH
-    effective_to: datetime | None = None
+    effective_to: Optional[datetime] = None
     #: Negotiated adjustment, e.g. Decimal("0.85") for a 15% enterprise
     #: discount. Applied multiplicatively to every token class.
     discount_multiplier: Decimal = Decimal("1")
@@ -114,13 +114,13 @@ def _card(
     *,
     inp: str = "0",
     out: str = "0",
-    cached_in: str | None = None,
-    cache_write: str | None = None,
-    reasoning: str | None = None,
-    embedding: str | None = None,
-    image: str | None = None,
-    audio_in: str | None = None,
-    audio_out: str | None = None,
+    cached_in: Optional[str] = None,
+    cache_write: Optional[str] = None,
+    reasoning: Optional[str] = None,
+    embedding: Optional[str] = None,
+    image: Optional[str] = None,
+    audio_in: Optional[str] = None,
+    audio_out: Optional[str] = None,
     per_request: str = "0",
     context_window: int = 128_000,
     max_output_tokens: int = 16_384,
@@ -605,29 +605,29 @@ class PricingCatalog:
         # effective match is usually the first element.
         self._by_key[(card.provider, card.model)].sort(key=lambda c: c.effective_from, reverse=True)
 
-    def resolve(self, provider: Provider, model: str, at: datetime | None = None) -> RateCard | None:
+    def resolve(self, provider: Provider, model: str, at: datetime | None = None) -> Optional[RateCard]:
         """Rate card in force for `model` at `at` (default: now, UTC)."""
-        moment = at or datetime.now(UTC)
+        moment = at or datetime.now(timezone.utc)
         if moment.tzinfo is None:
-            moment = moment.replace(tzinfo=UTC)
+            moment = moment.replace(tzinfo=timezone.utc)
         for card in self._by_key.get((provider, model), ()):
             if card.is_effective_at(moment):
                 return card
         return None
 
     def all_cards(self, at: datetime | None = None) -> list[RateCard]:
-        moment = at or datetime.now(UTC)
+        moment = at or datetime.now(timezone.utc)
         return [c for c in self._all if c.is_effective_at(moment)]
 
     def candidates(
         self,
         *,
-        model_types: set[ModelType] | None = None,
-        providers: set[Provider] | None = None,
+        model_types: Optional[set[ModelType]] = None,
+        providers: Optional[set[Provider]] = None,
         min_context: int = 0,
         requires_vision: bool = False,
         requires_tools: bool = False,
-        at: datetime | None = None,
+        at: Optional[datetime] = None,
     ) -> list[RateCard]:
         """Cards satisfying hard constraints. Used as the router's input set."""
         out: list[RateCard] = []
@@ -650,7 +650,7 @@ class PricingCatalog:
 default_catalog: Final[PricingCatalog] = PricingCatalog()
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class InfrastructureCostModel:
     """Cost model for self-hosted inference.
 
@@ -684,7 +684,7 @@ class InfrastructureCostModel:
         return compute, energy, network
 
 
-@dataclass(slots=True)
+@dataclass
 class PricingChange:
     """Audit record emitted when a rate card supersedes another."""
 
@@ -694,7 +694,7 @@ class PricingChange:
     old_rate: Decimal
     new_rate: Decimal
     effective_from: datetime
-    detected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    detected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def pct_delta(self) -> Decimal:

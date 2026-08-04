@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Optional, Union
 
 from app.domain.enums import (
     ModelType,
@@ -67,7 +68,7 @@ COMPLEXITY_QUALITY_FLOOR: dict[TaskComplexity, Decimal] = {
 }
 
 
-@dataclass(slots=True)
+@dataclass
 class RoutingConstraints:
     """Hard requirements. Any candidate failing one is removed, not penalised."""
 
@@ -75,18 +76,18 @@ class RoutingConstraints:
     requires_vision: bool = False
     requires_tools: bool = False
     requires_reasoning: bool = False
-    max_latency_ms: int | None = None
-    max_cost_per_request: Decimal | None = None
+    max_latency_ms: Optional[int] = None
+    max_cost_per_request: Optional[Decimal] = None
     #: Vendor allow-list from the tenant's procurement/compliance policy.
-    allowed_providers: set[Provider] | None = None
+    allowed_providers: Optional[set[Provider]] = None
     blocked_providers: set[Provider] = field(default_factory=set)
     #: Data residency / no-training requirements force self-hosted or an
     #: approved regional deployment.
     require_self_hosted: bool = False
-    allowed_model_types: set[ModelType] | None = None
+    allowed_model_types: Optional[set[ModelType]] = None
 
 
-@dataclass(slots=True)
+@dataclass
 class RoutingRequest:
     expected_input_tokens: int
     expected_output_tokens: int
@@ -113,7 +114,7 @@ class RoutingRequest:
         return max(needed, self.constraints.min_context_tokens)
 
 
-@dataclass(slots=True)
+@dataclass
 class RoutingCandidate:
     provider: Provider
     model: str
@@ -131,11 +132,11 @@ class RoutingCandidate:
         return f"{self.provider}/{self.model}"
 
 
-@dataclass(slots=True)
+@dataclass
 class RoutingDecision:
-    selected: RoutingCandidate | None
+    selected: Optional[RoutingCandidate]
     alternatives: list[RoutingCandidate] = field(default_factory=list)
-    baseline: RoutingCandidate | None = None
+    baseline: Optional[RoutingCandidate] = None
     rejected: dict[str, str] = field(default_factory=dict)
     rationale: str = ""
 
@@ -206,7 +207,7 @@ class ModelRouter:
 
     # -- internals ----------------------------------------------------------
 
-    def _reject_reason(self, card: RateCard, request: RoutingRequest) -> str | None:
+    def _reject_reason(self, card: RateCard, request: RoutingRequest) -> Optional[str]:
         c = request.constraints
         if card.context_window < request.required_context:
             return f"context window {card.context_window} < required {request.required_context}"
@@ -318,7 +319,9 @@ class ModelRouter:
                 "reliability": float(reliability_score),
             }
 
-    def _baseline_from_catalog(self, baseline_model: str, request: RoutingRequest) -> RoutingCandidate | None:
+    def _baseline_from_catalog(
+        self, baseline_model: str, request: RoutingRequest
+    ) -> Optional[RoutingCandidate]:
         for card in self.catalog.all_cards():
             if card.model == baseline_model:
                 return self._build_candidate(card, request)
@@ -328,7 +331,7 @@ class ModelRouter:
         self,
         selected: RoutingCandidate,
         request: RoutingRequest,
-        baseline: RoutingCandidate | None,
+        baseline: Union[RoutingCandidate, None],
     ) -> str:
         parts = [
             f"Selected {selected.key} for a {request.complexity} task under the "

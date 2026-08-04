@@ -28,7 +28,7 @@ recommendations dedupe on `(kind, scope_key)`, and forecasts are keyed on
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from celery import Celery
 from celery.schedules import crontab
@@ -112,7 +112,7 @@ def aggregate_rollups(self, lookback_minutes: int = 30) -> dict[str, int]:  # ty
     aggregation would permanently under-count them. The upsert makes
     re-processing free.
     """
-    window_start = datetime.now(UTC) - timedelta(minutes=lookback_minutes)
+    window_start = datetime.now(timezone.utc) - timedelta(minutes=lookback_minutes)
     logger.info("aggregating rollups since %s", window_start.isoformat())
     # SQL implementation lives in app.db.repository; see AnalyticsStore for the
     # aggregation contract it must satisfy.

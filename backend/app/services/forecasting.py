@@ -33,9 +33,10 @@ annual projections, which destroys credibility on first contact.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from statistics import NormalDist, fmean, pstdev
+from typing import Optional
 
 from app.domain.money import ZERO, quantize_cost, safe_div, to_decimal
 
@@ -48,7 +49,7 @@ MIN_SEASONAL_OBSERVATIONS = 21
 MIN_OBSERVATIONS = 5
 
 
-@dataclass(slots=True)
+@dataclass
 class ForecastPoint:
     at: date
     value: Decimal
@@ -56,14 +57,14 @@ class ForecastPoint:
     upper: Decimal
 
 
-@dataclass(slots=True)
+@dataclass
 class ForecastResult:
     points: list[ForecastPoint] = field(default_factory=list)
     method: str = "holt_winters"
     #: Mean absolute percentage error from walk-forward backtest on held-out
     #: history. Surfaced in the UI next to every forecast — an unqualified
     #: number invites false precision.
-    mape: Decimal | None = None
+    mape: Optional[Decimal] = None
     confidence: Decimal = Decimal("0.80")
     seasonal: bool = True
     warnings: list[str] = field(default_factory=list)
@@ -80,12 +81,12 @@ class ForecastResult:
         return sum((p.value for p in self.points[:days]), ZERO)
 
 
-@dataclass(slots=True)
+@dataclass
 class BudgetExhaustion:
     """When a budget runs out at the forecast burn rate."""
 
-    exhausted_on: date | None
-    days_remaining: int | None
+    exhausted_on: Optional[date]
+    days_remaining: Optional[int]
     projected_period_spend: Decimal
     budget_amount: Decimal
     projected_overrun: Decimal
@@ -193,7 +194,7 @@ def forecast_cost(
     history: list[Decimal | float | str],
     *,
     horizon_days: int = 30,
-    start_date: date | None = None,
+    start_date: Optional[date] = None,
     season_length: int = DEFAULT_SEASON_LENGTH,
     confidence: float = 0.80,
 ) -> ForecastResult:
@@ -205,7 +206,7 @@ def forecast_cost(
     """
     values = [to_decimal(v) for v in history]
     result = ForecastResult(confidence=to_decimal(confidence))
-    anchor = start_date or datetime.now(UTC).date()
+    anchor = start_date or datetime.now(timezone.utc).date()
 
     if len(values) < MIN_OBSERVATIONS:
         # Fall back to a flat mean projection. Stated plainly rather than
@@ -234,7 +235,7 @@ def forecast_cost(
             f"under {MIN_SEASONAL_OBSERVATIONS} observations; weekly seasonality not modelled"
         )
 
-    residuals = [a - b for a, b in zip(_f(values), fitted, strict=False)]
+    residuals = [a - b for a, b in zip(_f(values), fitted)]
     sigma = pstdev(residuals) if len(residuals) > 1 else 0.0
     z = NormalDist().inv_cdf(0.5 + confidence / 2)
 
@@ -259,7 +260,7 @@ def forecast_cost(
 
 def backtest_mape(
     values: list[Decimal], *, season_length: int = DEFAULT_SEASON_LENGTH, folds: int = 5
-) -> Decimal | None:
+) -> Optional[Decimal]:
     """Walk-forward MAPE — fit on a prefix, score the next day, roll forward.
 
     Walk-forward rather than a random split because a random split leaks future
@@ -289,7 +290,7 @@ def project_budget_exhaustion(
     period_start: date,
     period_end: date,
     forecast: ForecastResult,
-    today: date | None = None,
+    today: Optional[date] = None,
 ) -> BudgetExhaustion:
     """When, if ever, does this budget run dry?
 
@@ -298,12 +299,12 @@ def project_budget_exhaustion(
     weekly seasonality assessed mid-week, and over-predicts when assessed on a
     weekend — both produce alerts that erode trust.
     """
-    now = today or datetime.now(UTC).date()
+    now = today or datetime.now(timezone.utc).date()
     remaining_budget = budget_amount - spent_to_date
     days_left_in_period = max(0, (period_end - now).days)
 
     running = ZERO
-    exhausted_on: date | None = None
+    exhausted_on: Optional[date] = None
     for point in forecast.points:
         if point.at > period_end:
             break

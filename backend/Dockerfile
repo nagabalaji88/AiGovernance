@@ -6,7 +6,7 @@
 # package manager has far fewer options than one in a full build environment.
 
 # ---- builder ---------------------------------------------------------------
-FROM python:3.11-slim-bookworm AS builder
+FROM python:3.9-slim-bookworm AS builder
 
 ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -29,7 +29,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --upgrade pip setuptools wheel && pip install .
 
 # ---- runtime ---------------------------------------------------------------
-FROM python:3.11-slim-bookworm AS runtime
+FROM python:3.9-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

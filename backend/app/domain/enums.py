@@ -7,7 +7,25 @@ rename or remove an existing one without a migration + API version bump.
 
 from __future__ import annotations
 
-from enum import StrEnum
+from enum import Enum
+
+
+class StrEnum(str, Enum):
+    """Backport of `enum.StrEnum` (added in 3.11) for Python 3.9.
+
+    The plain `(str, Enum)` mixin is *not* equivalent: `str(member)` returns
+    "Provider.OPENAI" rather than "openai", and every f-string, dict key and
+    JSON field in this codebase depends on the latter. Overriding `__str__`
+    restores it, so these values serialise identically on 3.9 and 3.11+.
+    """
+
+    def __str__(self) -> str:
+        return str(self.value)
+
+    def __format__(self, format_spec: str) -> str:
+        # Enum.__format__ would otherwise re-introduce the qualified name in
+        # f-strings even with __str__ overridden.
+        return str.__format__(str(self.value), format_spec)
 
 
 class Provider(StrEnum):

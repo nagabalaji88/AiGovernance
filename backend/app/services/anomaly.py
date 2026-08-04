@@ -28,9 +28,10 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from statistics import median
+from typing import Optional, Union
 
 from app.domain.enums import AnomalyKind, RequestStatus, Severity
 from app.domain.money import ZERO, pct_change, quantize_cost, safe_div, to_decimal
@@ -46,15 +47,15 @@ MAD_TO_SIGMA = Decimal("1.4826")
 DEFAULT_Z_THRESHOLD = Decimal("3.5")
 
 
-@dataclass(slots=True)
+@dataclass
 class Anomaly:
     kind: AnomalyKind
     severity: Severity
     title: str
     detail: str
-    detected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    detected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     scope: str = "global"
-    scope_key: str | None = None
+    scope_key: Optional[str] = None
     observed_value: Decimal = ZERO
     expected_value: Decimal = ZERO
     deviation_score: Decimal = ZERO
@@ -62,7 +63,7 @@ class Anomaly:
     #: at zero. This is what goes in the alert subject line.
     estimated_impact: Decimal = ZERO
     evidence: dict[str, object] = field(default_factory=dict)
-    recommended_action: str | None = None
+    recommended_action: Optional[str] = None
 
     @property
     def is_actionable(self) -> bool:
@@ -129,7 +130,7 @@ def detect_series_anomaly(
     scope_key: str,
     threshold: Decimal = DEFAULT_Z_THRESHOLD,
     label: str = "cost",
-) -> Anomaly | None:
+) -> Optional[Anomaly]:
     """Score the most recent point of a time series against its own history."""
     if len(series) < 5:
         return None
@@ -470,9 +471,9 @@ def detect_error_bursts(
 
 def detect_all(
     events: list[UsageEvent],
-    costs: dict[str, CostBreakdown] | list[CostBreakdown],
+    costs: Union[dict[str, CostBreakdown], list[CostBreakdown]],
     *,
-    daily_cost_series: dict[str, list[Decimal]] | None = None,
+    daily_cost_series: Optional[dict[str, list[Decimal]]] = None,
 ) -> list[Anomaly]:
     """Run the full detector suite and return findings ranked by impact.
 

@@ -36,9 +36,10 @@ when a regression is detected on a metric the tenant marked as guarded.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from statistics import NormalDist, fmean
+from typing import Optional
 
 from app.domain.enums import QualityDimension
 from app.domain.money import ZERO, safe_div, to_decimal
@@ -63,7 +64,7 @@ DEFAULT_TOLERANCES: dict[QualityDimension, Decimal] = {
 }
 
 
-@dataclass(slots=True)
+@dataclass
 class QualityMeasurement:
     """One dimension's score over a sample."""
 
@@ -73,7 +74,7 @@ class QualityMeasurement:
     #: Standard deviation of the underlying sample, used for significance.
     stddev: Decimal = ZERO
     source: str = "deterministic"
-    measured_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    measured_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def standard_error(self) -> Decimal:
@@ -82,15 +83,15 @@ class QualityMeasurement:
         return self.stddev / Decimal(str(self.sample_size**0.5))
 
 
-@dataclass(slots=True)
+@dataclass
 class QualityBaseline:
     """Quality snapshot for a subject (model, prompt version, feature)."""
 
     subject: str
     measurements: dict[QualityDimension, QualityMeasurement] = field(default_factory=dict)
-    captured_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    captured_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
-    def score(self, dimension: QualityDimension) -> Decimal | None:
+    def score(self, dimension: QualityDimension) -> Optional[Decimal]:
         measurement = self.measurements.get(dimension)
         return measurement.score if measurement else None
 
@@ -112,14 +113,14 @@ class QualityBaseline:
         return to_decimal(fmean(float(s) for s in scores))
 
 
-@dataclass(slots=True)
+@dataclass
 class DimensionComparison:
     dimension: QualityDimension
     baseline_score: Decimal
     candidate_score: Decimal
     tolerance: Decimal
     sample_size: int
-    p_value: Decimal | None = None
+    p_value: Optional[Decimal] = None
 
     @property
     def raw_delta(self) -> Decimal:
@@ -150,7 +151,7 @@ class DimensionComparison:
         return self.p_value < Decimal("0.05")
 
 
-@dataclass(slots=True)
+@dataclass
 class QualityVerdict:
     subject: str
     comparisons: list[DimensionComparison] = field(default_factory=list)
@@ -189,8 +190,8 @@ class QualityGate:
     def __init__(
         self,
         *,
-        tolerances: dict[QualityDimension, Decimal] | None = None,
-        guarded: set[QualityDimension] | None = None,
+        tolerances: Optional[dict[QualityDimension, Decimal]] = None,
+        guarded: Optional[set[QualityDimension]] = None,
         min_sample_size: int = 100,
     ) -> None:
         self.tolerances = {**DEFAULT_TOLERANCES, **(tolerances or {})}
@@ -262,7 +263,7 @@ class QualityGate:
         return verdict
 
 
-def _welch_p_value(baseline: QualityMeasurement, candidate: QualityMeasurement) -> Decimal | None:
+def _welch_p_value(baseline: QualityMeasurement, candidate: QualityMeasurement) -> Optional[Decimal]:
     """Two-sided Welch's t-test p-value, normal-approximated.
 
     Welch rather than Student's because the two samples routinely have

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, Optional, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -46,15 +46,15 @@ class PageParams(BaseModel):
     and stable under concurrent writes.
     """
 
-    cursor: str | None = Field(default=None, description="Opaque cursor from the previous page")
+    cursor: Optional[str] = Field(default=None, description="Opaque cursor from the previous page")
     limit: int = Field(default=50, ge=1, le=500)
 
 
 class Page(BaseModel, Generic[T]):
     items: list[T]
-    next_cursor: str | None = None
+    next_cursor: Optional[str] = None
     has_more: bool = False
-    total_estimate: int | None = Field(
+    total_estimate: Optional[int] = Field(
         default=None,
         description=(
             "Approximate row count from table statistics. Exact counts are not "
@@ -82,15 +82,15 @@ class TokenUsageIn(ApiModel):
 
 
 class AttributionIn(ApiModel):
-    department_id: UUID | None = None
-    team_id: UUID | None = None
-    user_id: UUID | None = None
-    project: str | None = Field(default=None, max_length=120)
-    feature: str | None = Field(default=None, max_length=120)
-    application: str | None = Field(default=None, max_length=120)
+    department_id: Optional[UUID] = None
+    team_id: Optional[UUID] = None
+    user_id: Optional[UUID] = None
+    project: Optional[str] = Field(default=None, max_length=120)
+    feature: Optional[str] = Field(default=None, max_length=120)
+    application: Optional[str] = Field(default=None, max_length=120)
     environment: str = Field(default="production", max_length=32)
-    customer_id: str | None = Field(default=None, max_length=120)
-    cost_center: str | None = Field(default=None, max_length=64)
+    customer_id: Optional[str] = Field(default=None, max_length=120)
+    cost_center: Optional[str] = Field(default=None, max_length=64)
     tags: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("tags")
@@ -113,13 +113,13 @@ class AttributionIn(ApiModel):
 
 class TraceIn(ApiModel):
     latency_ms: int = Field(default=0, ge=0)
-    time_to_first_token_ms: int | None = Field(default=None, ge=0)
+    time_to_first_token_ms: Optional[int] = Field(default=None, ge=0)
     streamed: bool = False
     retry_count: int = Field(default=0, ge=0)
-    parent_request_id: str | None = Field(default=None, max_length=64)
-    agent_run_id: str | None = Field(default=None, max_length=64)
+    parent_request_id: Optional[str] = Field(default=None, max_length=64)
+    agent_run_id: Optional[str] = Field(default=None, max_length=64)
     agent_step: int = Field(default=0, ge=0)
-    conversation_id: str | None = Field(default=None, max_length=64)
+    conversation_id: Optional[str] = Field(default=None, max_length=64)
     conversation_turn: int = Field(default=0, ge=0)
     rag_chunks: int = Field(default=0, ge=0)
     rag_tokens: int = Field(default=0, ge=0)
@@ -134,16 +134,16 @@ class UsageEventIn(ApiModel):
     provider: str
     model: str
     tokens: TokenUsageIn
-    occurred_at: datetime | None = None
-    idempotency_key: str | None = Field(default=None, max_length=128)
+    occurred_at: Optional[datetime] = None
+    idempotency_key: Optional[str] = Field(default=None, max_length=128)
     model_type: str = "chat"
     status: str = "success"
-    error_code: str | None = Field(default=None, max_length=64)
+    error_code: Optional[str] = Field(default=None, max_length=64)
     attribution: AttributionIn = Field(default_factory=AttributionIn)
     trace: TraceIn = Field(default_factory=TraceIn)
-    prompt_template_id: UUID | None = None
-    prompt_version: str | None = Field(default=None, max_length=40)
-    prompt_fingerprint: str | None = Field(default=None, max_length=64)
+    prompt_template_id: Optional[UUID] = None
+    prompt_version: Optional[str] = Field(default=None, max_length=40)
+    prompt_fingerprint: Optional[str] = Field(default=None, max_length=64)
     served_from_semantic_cache: bool = False
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -194,12 +194,12 @@ class CostSummaryOut(ApiModel):
     cost_per_1k_tokens: Decimal
     waste_ratio_pct: Decimal
     attribution_coverage_pct: Decimal
-    period_over_period_pct: Decimal | None = None
+    period_over_period_pct: Optional[Decimal] = None
 
 
 class DimensionSliceOut(ApiModel):
     key: str
-    label: str | None = None
+    label: Optional[str] = None
     requests: int
     total_tokens: int
     cost: Decimal
@@ -257,7 +257,7 @@ class ForecastPointOut(ApiModel):
 class ForecastOut(ApiModel):
     points: list[ForecastPointOut]
     method: str
-    mape: Decimal | None = Field(
+    mape: Optional[Decimal] = Field(
         default=None,
         description="Backtested mean absolute percentage error. Null when history "
         "is too short to backtest — treat such forecasts as directional only.",
@@ -270,8 +270,8 @@ class ForecastOut(ApiModel):
 
 class BudgetExhaustionOut(ApiModel):
     will_exhaust: bool
-    exhausted_on: date | None
-    days_remaining: int | None
+    exhausted_on: Optional[date]
+    days_remaining: Optional[int]
     projected_period_spend: Decimal
     budget_amount: Decimal
     projected_overrun: Decimal
@@ -296,9 +296,9 @@ class BudgetIn(ApiModel):
     action_at_limit: Literal["allow", "warn", "require_approval", "downgrade_model", "throttle", "block"] = (
         "warn"
     )
-    hard_stop_multiplier: Decimal | None = Field(default=None, gt=1)
+    hard_stop_multiplier: Optional[Decimal] = Field(default=None, gt=1)
     rollover: bool = False
-    owner_email: str | None = None
+    owner_email: Optional[str] = None
 
 
 class BudgetStatusOut(ApiModel):
@@ -316,7 +316,7 @@ class BudgetStatusOut(ApiModel):
     severity: str
     is_exceeded: bool
     projected_to_exceed: bool
-    forecast_period_spend: Decimal | None = None
+    forecast_period_spend: Optional[Decimal] = None
 
 
 class PreflightIn(ApiModel):
@@ -326,10 +326,10 @@ class PreflightIn(ApiModel):
     model: str
     estimated_input_tokens: int = Field(ge=0)
     estimated_output_tokens: int = Field(ge=0)
-    department_id: str | None = None
-    team_id: str | None = None
-    user_id: str | None = None
-    feature: str | None = None
+    department_id: Optional[str] = None
+    team_id: Optional[str] = None
+    user_id: Optional[str] = None
+    feature: Optional[str] = None
     environment: str = "production"
 
 
@@ -339,13 +339,13 @@ class PreflightOut(ApiModel):
     estimated_cost: Decimal
     reasons: list[str] = Field(default_factory=list)
     violated_policies: list[str] = Field(default_factory=list)
-    suggested_model: str | None = None
+    suggested_model: Optional[str] = None
     evaluated_in_ms: float
 
 
 class ChargebackLineOut(ApiModel):
     cost_center: str
-    department: str | None
+    department: Optional[str]
     direct_cost: Decimal
     allocated_shared_cost: Decimal
     total: Decimal
@@ -377,7 +377,7 @@ class RecommendationOut(ApiModel):
     quality_impact: Decimal
     requires_evaluation: bool
     blocked_by_quality: bool
-    quality_note: str | None = None
+    quality_note: Optional[str] = None
     implementation_steps: list[str]
     evidence: dict[str, Any]
     status: str
@@ -385,7 +385,7 @@ class RecommendationOut(ApiModel):
 
 class PromptAnalysisIn(ApiModel):
     text: str = Field(max_length=500_000)
-    exact_token_count: int | None = Field(default=None, ge=0)
+    exact_token_count: Optional[int] = Field(default=None, ge=0)
     static_prefix_chars: int = Field(default=0, ge=0)
     monthly_calls: int = Field(default=1000, ge=0)
     rate_per_token: Decimal = Field(default=Decimal("0.0000025"), ge=0)
@@ -396,7 +396,7 @@ class PromptFindingOut(ApiModel):
     detail: str
     tokens_saved: int
     confidence: float
-    span: list[int] | None = None
+    span: Optional[list[int]] = None
     severity: str
 
 
@@ -427,11 +427,11 @@ class RoutingIn(ApiModel):
         "local_only",
     ] = "balanced"
     complexity: Literal["trivial", "simple", "moderate", "complex", "expert"] = "moderate"
-    baseline_model: str | None = None
+    baseline_model: Optional[str] = None
     requires_vision: bool = False
     requires_tools: bool = False
-    max_latency_ms: int | None = Field(default=None, gt=0)
-    allowed_providers: list[str] | None = None
+    max_latency_ms: Optional[int] = Field(default=None, gt=0)
+    allowed_providers: Optional[list[str]] = None
     require_self_hosted: bool = False
 
 
@@ -446,9 +446,9 @@ class RoutingCandidateOut(ApiModel):
 
 
 class RoutingOut(ApiModel):
-    selected: RoutingCandidateOut | None
+    selected: Optional[RoutingCandidateOut]
     alternatives: list[RoutingCandidateOut]
-    baseline: RoutingCandidateOut | None
+    baseline: Optional[RoutingCandidateOut]
     savings_vs_baseline: Decimal
     savings_pct: Decimal
     quality_delta: Decimal
@@ -467,12 +467,12 @@ class SimulationLeverIn(ApiModel):
         "summarise_history",
         "batch_requests",
     ]
-    provider: str | None = None
-    model: str | None = None
-    reduction_pct: Decimal | None = Field(default=None, ge=0, le=100)
-    hit_rate: Decimal | None = Field(default=None, ge=0, le=1)
-    quality_delta: Decimal | None = None
-    eligible_ratio: Decimal | None = Field(default=None, ge=0, le=1)
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    reduction_pct: Optional[Decimal] = Field(default=None, ge=0, le=100)
+    hit_rate: Optional[Decimal] = Field(default=None, ge=0, le=1)
+    quality_delta: Optional[Decimal] = None
+    eligible_ratio: Optional[Decimal] = Field(default=None, ge=0, le=1)
 
 
 class WorkloadProfileIn(ApiModel):
@@ -513,19 +513,19 @@ class ScenarioOut(ApiModel):
 
 
 class AnomalyOut(ApiModel):
-    id: UUID | None = None
+    id: Optional[UUID] = None
     kind: str
     severity: str
     title: str
     detail: str
     scope: str
-    scope_key: str | None
+    scope_key: Optional[str]
     observed_value: Decimal
     expected_value: Decimal
     deviation_score: Decimal
     estimated_impact: Decimal
     evidence: dict[str, Any]
-    recommended_action: str | None
+    recommended_action: Optional[str]
     detected_at: datetime
     is_resolved: bool = False
 
@@ -583,7 +583,7 @@ class TokenOut(ApiModel):
 class MeOut(ApiModel):
     id: UUID
     email: str
-    full_name: str | None
+    full_name: Optional[str]
     role: str
     organization_id: UUID
     permissions: list[str]
@@ -599,5 +599,5 @@ class ErrorOut(ApiModel):
 
     code: str
     detail: str
-    request_id: str | None = None
-    fields: dict[str, str] | None = None
+    request_id: Optional[str] = None
+    fields: Optional[dict[str, str]] = None

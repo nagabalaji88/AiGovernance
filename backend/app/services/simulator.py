@@ -31,6 +31,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Optional, Union
 
 from app.domain.enums import Provider
 from app.domain.money import ZERO, quantize_cost, safe_div, to_decimal
@@ -38,7 +39,7 @@ from app.domain.pricing import PricingCatalog, default_catalog
 from app.domain.usage import TokenUsage
 
 
-@dataclass(slots=True)
+@dataclass
 class WorkloadProfile:
     """The current state of a workload, as measured from real usage."""
 
@@ -68,7 +69,7 @@ class WorkloadProfile:
         )
 
 
-@dataclass(slots=True)
+@dataclass
 class SimulationState:
     """Mutable token/rate state threaded through the lever pipeline."""
 
@@ -119,7 +120,7 @@ class Lever:
         return self.name
 
 
-@dataclass(slots=True)
+@dataclass
 class SwitchModel(Lever):
     """Route the workload to a different model."""
 
@@ -139,7 +140,7 @@ class SwitchModel(Lever):
         return f"Switch to {self.provider}/{self.model}"
 
 
-@dataclass(slots=True)
+@dataclass
 class CompressPrompt(Lever):
     """Remove a share of the non-static, non-RAG prompt tokens."""
 
@@ -163,7 +164,7 @@ class CompressPrompt(Lever):
         return f"Compress prompt by {self.reduction_pct}%"
 
 
-@dataclass(slots=True)
+@dataclass
 class EnablePromptCache(Lever):
     """Move the static prefix onto the provider's prompt cache."""
 
@@ -183,7 +184,7 @@ class EnablePromptCache(Lever):
         return f"Enable prompt caching ({self.hit_rate * 100:.0f}% hit rate)"
 
 
-@dataclass(slots=True)
+@dataclass
 class EnableResponseCache(Lever):
     """Serve a share of requests from cache, eliminating the call entirely."""
 
@@ -202,7 +203,7 @@ class EnableResponseCache(Lever):
         return f"Response cache at {self.hit_rate * 100:.0f}% hit rate"
 
 
-@dataclass(slots=True)
+@dataclass
 class ReduceRagContext(Lever):
     """Cut retrieved context (lower top_k, trimmed overlap, reranking)."""
 
@@ -221,7 +222,7 @@ class ReduceRagContext(Lever):
         return f"Reduce RAG context by {self.reduction_pct}%"
 
 
-@dataclass(slots=True)
+@dataclass
 class SummariseHistory(Lever):
     """Replace verbatim conversation history with a rolling summary."""
 
@@ -243,7 +244,7 @@ class SummariseHistory(Lever):
         return f"Summarise conversation history ({self.reduction_pct}% reduction)"
 
 
-@dataclass(slots=True)
+@dataclass
 class BatchRequests(Lever):
     """Move eligible traffic to the provider's batch tier."""
 
@@ -267,7 +268,7 @@ class BatchRequests(Lever):
         return f"Batch {self.eligible_ratio * 100:.0f}% of requests"
 
 
-@dataclass(slots=True)
+@dataclass
 class ScenarioResult:
     name: str
     baseline_monthly_cost: Decimal
@@ -426,7 +427,7 @@ class Simulator:
 
 
 def standard_scenarios(
-    profile: WorkloadProfile, *, cheaper_model: tuple[Provider, str] | None = None
+    profile: WorkloadProfile, *, cheaper_model: Optional[tuple[Provider, str]] = None
 ) -> dict[str, list[Lever]]:
     """The default scenario set offered in the simulation UI.
 
@@ -468,10 +469,10 @@ def standard_scenarios(
 
 def roi(
     *,
-    monthly_savings: Decimal | float | str,
-    implementation_hours: Decimal | float | str,
-    hourly_rate: Decimal | float | str = Decimal("120"),
-    ongoing_monthly_cost: Decimal | float | str = ZERO,
+    monthly_savings: Union[Decimal, float, str],
+    implementation_hours: Union[Decimal, float, str],
+    hourly_rate: Union[Decimal, float, str] = Decimal("120"),
+    ongoing_monthly_cost: Union[Decimal, float, str] = ZERO,
 ) -> dict[str, float]:
     """Payback analysis for an optimization.
 

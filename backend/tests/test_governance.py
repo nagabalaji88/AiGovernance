@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
 
@@ -256,10 +256,10 @@ class TestPolicyEngine:
                 for i in range(20)
             ]
         )
-        started = datetime.now(UTC)
+        started = datetime.now(timezone.utc)
         for _ in range(1_000):
             engine.evaluate_request(intent())
-        elapsed_ms = (datetime.now(UTC) - started).total_seconds() * 1000
+        elapsed_ms = (datetime.now(timezone.utc) - started).total_seconds() * 1000
         assert elapsed_ms / 1_000 < 5.0
 
 

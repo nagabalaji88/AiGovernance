@@ -13,7 +13,7 @@ Azure Key Vault), never baked into the image or the ConfigMap.
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -38,9 +38,9 @@ class Settings(BaseSettings):
     refresh_token_ttl_days: int = 7
     #: OIDC/SAML discovery for enterprise SSO. When set, local password auth is
     #: disabled — mixed auth modes are a standing audit finding.
-    oidc_issuer: str | None = None
-    oidc_client_id: str | None = None
-    oidc_client_secret: str | None = None
+    oidc_issuer: Optional[str] = None
+    oidc_client_id: Optional[str] = None
+    oidc_client_secret: Optional[str] = None
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
 
     # -- database -----------------------------------------------------------
@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     pricing_refresh_seconds: int = 300
 
     # -- ingestion ----------------------------------------------------------
-    kafka_bootstrap_servers: str | None = None
+    kafka_bootstrap_servers: Optional[str] = None
     kafka_usage_topic: str = "aicost.usage.v1"
     ingest_batch_size: int = 500
     ingest_max_batch_wait_ms: int = 200
@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     # -- observability ------------------------------------------------------
     log_level: str = "INFO"
     log_format: Literal["json", "console"] = "json"
-    otel_exporter_endpoint: str | None = None
+    otel_exporter_endpoint: Optional[str] = None
     otel_service_name: str = "aicost-api"
     metrics_enabled: bool = True
     #: Head-based sampling. 100% tracing on a service handling 50k events/sec

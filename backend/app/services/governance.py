@@ -27,8 +27,9 @@ choice is surfaced explicitly in the UI rather than buried in config.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Optional
 from uuid import UUID, uuid4
 
 from app.domain.enums import (
@@ -134,7 +135,7 @@ def has_permission(role: Role, permission: str) -> bool:
     return "*" in granted or permission in granted
 
 
-@dataclass(slots=True)
+@dataclass
 class Budget:
     scope: BudgetScope
     scope_id: str
@@ -150,7 +151,7 @@ class Budget:
     #: to harder enforcement once they trust the numbers.
     action_at_limit: EnforcementAction = EnforcementAction.WARN
     #: Optional harder action once spend exceeds the limit by this multiple.
-    hard_stop_multiplier: Decimal | None = None
+    hard_stop_multiplier: Optional[Decimal] = None
     #: Allow the period's unspent remainder to carry forward. Used by teams
     #: with lumpy batch workloads, where a strict monthly cap forces artificial
     #: work-shaping at month boundaries.
@@ -158,7 +159,7 @@ class Budget:
     enabled: bool = True
 
     def period_bounds(self, at: date | None = None) -> tuple[date, date]:
-        today = at or datetime.now(UTC).date()
+        today = at or datetime.now(timezone.utc).date()
         if self.period is BudgetPeriod.DAILY:
             return today, today
         if self.period is BudgetPeriod.WEEKLY:
@@ -179,13 +180,13 @@ class Budget:
         return date(today.year, 1, 1), date(today.year, 12, 31)
 
 
-@dataclass(slots=True)
+@dataclass
 class BudgetStatus:
     budget: Budget
     spent: Decimal
     period_start: date
     period_end: date
-    forecast_period_spend: Decimal | None = None
+    forecast_period_spend: Optional[Decimal] = None
 
     @property
     def utilisation(self) -> Decimal:
@@ -228,7 +229,7 @@ class BudgetStatus:
         return self.forecast_period_spend > self.budget.amount
 
 
-@dataclass(slots=True)
+@dataclass
 class Policy:
     """A governance rule evaluated pre-flight.
 
@@ -242,21 +243,21 @@ class Policy:
     action: EnforcementAction
     id: UUID = field(default_factory=uuid4)
     scope: BudgetScope = BudgetScope.ORGANIZATION
-    scope_id: str | None = None
-    max_cost_per_request: Decimal | None = None
-    max_tokens_per_request: int | None = None
-    max_requests_per_minute: int | None = None
-    max_context_tokens: int | None = None
-    allowed_providers: set[str] | None = None
+    scope_id: Optional[str] = None
+    max_cost_per_request: Optional[Decimal] = None
+    max_tokens_per_request: Optional[int] = None
+    max_requests_per_minute: Optional[int] = None
+    max_context_tokens: Optional[int] = None
+    allowed_providers: Optional[set[str]] = None
     blocked_models: set[str] = field(default_factory=set)
-    require_approval_above: Decimal | None = None
+    require_approval_above: Optional[Decimal] = None
     #: If the policy service cannot evaluate, block instead of allowing.
     #: Off by default; see module docstring.
     fail_closed: bool = False
     enabled: bool = True
     priority: int = 100
 
-    def evaluate(self, request: RequestIntent) -> PolicyViolation | None:
+    def evaluate(self, request: RequestIntent) -> Optional[PolicyViolation]:
         if not self.enabled:
             return None
         if self.max_cost_per_request is not None and request.estimated_cost > self.max_cost_per_request:
@@ -302,7 +303,7 @@ class Policy:
         return None
 
 
-@dataclass(slots=True)
+@dataclass
 class RequestIntent:
     """What the caller is about to do, as supplied by the SDK pre-flight."""
 
@@ -311,26 +312,26 @@ class RequestIntent:
     estimated_tokens: int
     estimated_cost: Decimal
     context_tokens: int = 0
-    department_id: str | None = None
-    team_id: str | None = None
-    user_id: str | None = None
-    feature: str | None = None
-    project: str | None = None
+    department_id: Optional[str] = None
+    team_id: Optional[str] = None
+    user_id: Optional[str] = None
+    feature: Optional[str] = None
+    project: Optional[str] = None
     environment: str = "production"
 
 
-@dataclass(slots=True)
+@dataclass
 class PolicyViolation:
     policy: Policy
     reason: str
-    override_action: EnforcementAction | None = None
+    override_action: Optional[EnforcementAction] = None
 
     @property
     def action(self) -> EnforcementAction:
         return self.override_action or self.policy.action
 
 
-@dataclass(slots=True)
+@dataclass
 class EnforcementDecision:
     action: EnforcementAction
     allowed: bool
@@ -338,8 +339,8 @@ class EnforcementDecision:
     violated_policies: list[str] = field(default_factory=list)
     #: Populated when the action is DOWNGRADE_MODEL — the caller should retry
     #: against this model instead of failing.
-    suggested_model: str | None = None
-    budget_status: BudgetStatus | None = None
+    suggested_model: Optional[str] = None
+    budget_status: Optional[BudgetStatus] = None
     evaluated_in_ms: float = 0.0
 
     def as_dict(self) -> dict[str, object]:
@@ -401,8 +402,8 @@ class PolicyEngine:
         self,
         intent: RequestIntent,
         *,
-        budget_status: BudgetStatus | None = None,
-        fallback_model: str | None = None,
+        budget_status: Optional[BudgetStatus] = None,
+        fallback_model: Optional[str] = None,
     ) -> EnforcementDecision:
         """Return the enforcement decision for one intended request.
 
@@ -411,7 +412,7 @@ class PolicyEngine:
         developer who fixes only the reason they were shown, then trips the
         next one, loses trust in the system fast.
         """
-        started = datetime.now(UTC)
+        started = datetime.now(timezone.utc)
         reasons: list[str] = []
         violated: list[str] = []
         action = EnforcementAction.ALLOW
@@ -437,7 +438,7 @@ class PolicyEngine:
                 if _ACTION_SEVERITY[budget_action] > _ACTION_SEVERITY[action]:
                     action = budget_action
 
-        elapsed = (datetime.now(UTC) - started).total_seconds() * 1000
+        elapsed = (datetime.now(timezone.utc) - started).total_seconds() * 1000
         return EnforcementDecision(
             action=action,
             allowed=action
@@ -460,12 +461,12 @@ class PolicyEngine:
         return EnforcementAction.ALLOW
 
 
-@dataclass(slots=True)
+@dataclass
 class ChargebackLine:
     """One line of a chargeback or showback statement."""
 
     cost_center: str
-    department: str | None
+    department: Optional[str]
     direct_cost: Decimal
     #: Share of unattributable platform cost allocated to this cost centre.
     allocated_shared_cost: Decimal
@@ -481,10 +482,10 @@ def build_chargeback(
     direct_costs: dict[str, Decimal],
     *,
     shared_cost: Decimal = ZERO,
-    usage_weights: dict[str, Decimal] | None = None,
-    department_map: dict[str, str] | None = None,
-    token_counts: dict[str, int] | None = None,
-    request_counts: dict[str, int] | None = None,
+    usage_weights: Optional[dict[str, Decimal]] = None,
+    department_map: Optional[dict[str, str]] = None,
+    token_counts: Optional[dict[str, int]] = None,
+    request_counts: Optional[dict[str, int]] = None,
 ) -> list[ChargebackLine]:
     """Allocate direct and shared cost across cost centres.
 
@@ -514,7 +515,7 @@ def build_chargeback(
     return lines
 
 
-@dataclass(slots=True)
+@dataclass
 class ApprovalRequest:
     """A spend action awaiting human sign-off."""
 
@@ -524,11 +525,11 @@ class ApprovalRequest:
     justification: str
     id: UUID = field(default_factory=uuid4)
     status: str = "pending"
-    approver_id: UUID | None = None
-    decided_at: datetime | None = None
-    decision_note: str | None = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    expires_at: datetime | None = None
+    approver_id: Optional[UUID] = None
+    decided_at: Optional[datetime] = None
+    decision_note: Optional[str] = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    expires_at: Optional[datetime] = None
 
     def decide(self, *, approver_id: UUID, approved: bool, note: str | None = None) -> None:
         """Record a decision.
@@ -544,5 +545,5 @@ class ApprovalRequest:
             raise ValueError(f"request already {self.status}")
         self.status = "approved" if approved else "rejected"
         self.approver_id = approver_id
-        self.decided_at = datetime.now(UTC)
+        self.decided_at = datetime.now(timezone.utc)
         self.decision_note = note

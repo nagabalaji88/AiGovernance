@@ -2,7 +2,7 @@
 name = "aicost-platform"
 version = "1.0.0"
 description = "AI Cost Intelligence & Token Optimization Platform - backend services"
-requires-python = ">=3.11"
+requires-python = ">=3.9"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
@@ -21,7 +21,7 @@ dependencies = [
     "opentelemetry-api>=1.28",
     "opentelemetry-sdk>=1.28",
     "opentelemetry-instrumentation-fastapi>=0.49b0",
-    "numpy>=2.1",
+    "numpy>=1.26,<2.1",  # 2.1 dropped Python 3.9
     "orjson>=3.10",
 ]
 
@@ -48,7 +48,7 @@ include = ["app*"]
 # docstrings with comparison tables, and hard-wrapping those makes them less
 # readable than the line length saves.
 line-length = 110
-target-version = "py311"
+target-version = "py39"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
@@ -60,10 +60,20 @@ ignore = [
     # `PermissionDenied` reads better than `PermissionDeniedError` and matches
     # the convention used by every major Python web framework.
     "N818",
+    # UP007/UP045 push `Optional[X]` back to `X | None`. Correct for annotations
+    # that are only ever strings — but Pydantic, SQLAlchemy's `Mapped[]` and
+    # FastAPI all call `get_type_hints()` and *evaluate* theirs, and on 3.9
+    # `str | None` raises `TypeError: unsupported operand type(s) for |`.
+    # `from __future__ import annotations` does not save those call sites, which
+    # is precisely what ruff's heuristic assumes. Applying these fixes would
+    # silently break every model in the project on the minimum supported
+    # interpreter, so they stay off until the floor moves to 3.10.
+    "UP007",
+    "UP045",
 ]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.9"
 warn_unused_ignores = true
 disallow_untyped_defs = true
 plugins = []

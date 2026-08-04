@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -25,8 +27,8 @@ def get_store() -> AnalyticsStore:
 
 
 async def get_principal(
-    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
-    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
     settings: Settings = Depends(get_settings),
 ) -> Principal:
     """Resolve the calling principal from a bearer token or API key.

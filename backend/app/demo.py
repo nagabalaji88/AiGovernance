@@ -20,8 +20,9 @@ weekly seasonality is real rather than assumed.
 from __future__ import annotations
 
 import random
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Optional
 from uuid import UUID, uuid4
 
 from app.domain.enums import ModelType, Provider, RequestStatus
@@ -86,18 +87,18 @@ def _event(
     status: RequestStatus = RequestStatus.SUCCESS,
     latency_ms: int = 900,
     retry_count: int = 0,
-    parent_request_id: str | None = None,
-    agent_run_id: str | None = None,
+    parent_request_id: Optional[str] = None,
+    agent_run_id: Optional[str] = None,
     agent_step: int = 0,
-    conversation_id: str | None = None,
+    conversation_id: Optional[str] = None,
     conversation_turn: int = 0,
     system_prompt_tokens: int = 0,
     few_shot_tokens: int = 0,
     tool_definition_tokens: int = 0,
     rag_tokens: int = 0,
     rag_chunks: int = 0,
-    fingerprint: str | None = None,
-    application: str | None = None,
+    fingerprint: Optional[str] = None,
+    application: Optional[str] = None,
 ) -> UsageEvent:
     team_id, department = TEAMS[team]
     return UsageEvent(
@@ -149,7 +150,7 @@ def seed(
 ) -> int:
     """Populate `store` with `days` of synthetic traffic. Returns event count."""
     rng = random.Random(seed_value)
-    now = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
     start = now - timedelta(days=days)
     count = 0
 

@@ -30,8 +30,9 @@ plain table gives us minute-level freshness at a fraction of the write cost.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from decimal import Decimal
+from typing import Optional
 
 from sqlalchemy import (
     BigInteger,
@@ -62,7 +63,7 @@ def _uuid_pk() -> Mapped[uuid.UUID]:
 
 
 def _now() -> datetime:
-    return datetime.now(UTC)
+    return datetime.now(timezone.utc)
 
 
 class TimestampMixin:
@@ -97,7 +98,7 @@ class Organization(Base, TimestampMixin):
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
     #: Negotiated discount applied across all rate cards for this tenant.
     discount_multiplier: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False, default=Decimal("1"))
-    data_residency: Mapped[str | None] = mapped_column(String(32))
+    data_residency: Mapped[Optional[str]] = mapped_column(String(32))
     settings: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
@@ -117,14 +118,14 @@ class Department(Base, TimestampMixin):
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     code: Mapped[str] = mapped_column(String(64), nullable=False)
-    cost_center: Mapped[str | None] = mapped_column(String(64))
+    cost_center: Mapped[Optional[str]] = mapped_column(String(64))
     #: Self-reference supports arbitrary org hierarchies (division -> department
     #: -> sub-department) without a separate closure table. Depth is small
     #: (< 5) so recursive CTEs are cheap.
-    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+    parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("departments.id", ondelete="SET NULL")
     )
-    owner_email: Mapped[str | None] = mapped_column(String(320))
+    owner_email: Mapped[Optional[str]] = mapped_column(String(320))
 
     organization: Mapped[Organization] = relationship(back_populates="departments")
     teams: Mapped[list[Team]] = relationship(back_populates="department")
@@ -141,14 +142,14 @@ class Team(Base, TimestampMixin):
     organization_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
-    department_id: Mapped[uuid.UUID | None] = mapped_column(
+    department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("departments.id", ondelete="SET NULL")
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(80), nullable=False)
-    owner_email: Mapped[str | None] = mapped_column(String(320))
+    owner_email: Mapped[Optional[str]] = mapped_column(String(320))
 
-    department: Mapped[Department | None] = relationship(back_populates="teams")
+    department: Mapped[Optional[Department]] = relationship(back_populates="teams")
 
 
 class User(Base, TimestampMixin):
@@ -163,17 +164,17 @@ class User(Base, TimestampMixin):
         PGUUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     email: Mapped[str] = mapped_column(String(320), nullable=False)
-    full_name: Mapped[str | None] = mapped_column(String(200))
+    full_name: Mapped[Optional[str]] = mapped_column(String(200))
     #: Null when the tenant uses SSO — there is no local password to store,
     #: which is the desired end state for every enterprise deployment.
-    hashed_password: Mapped[str | None] = mapped_column(String(255))
+    hashed_password: Mapped[Optional[str]] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(32), nullable=False, default="viewer")
-    team_id: Mapped[uuid.UUID | None] = mapped_column(
+    team_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("teams.id", ondelete="SET NULL")
     )
-    external_subject: Mapped[str | None] = mapped_column(String(255), index=True)
+    external_subject: Mapped[Optional[str]] = mapped_column(String(255), index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 class ApiKey(Base, TimestampMixin):
@@ -195,11 +196,11 @@ class ApiKey(Base, TimestampMixin):
     prefix: Mapped[str] = mapped_column(String(12), nullable=False, index=True)
     hashed_key: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     scopes: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
-    created_by: Mapped[uuid.UUID | None] = mapped_column(
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
@@ -248,7 +249,7 @@ class ModelPricing(Base, TimestampMixin):
     per_request: Mapped[Decimal] = mapped_column(Numeric(20, 10), nullable=False, default=Decimal("0"))
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
     effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    effective_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    effective_to: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     source: Mapped[str] = mapped_column(String(40), nullable=False, default="provider_sync")
 
 
@@ -293,13 +294,13 @@ class UsageEventRow(Base):
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True, nullable=False)
     organization_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
-    idempotency_key: Mapped[str | None] = mapped_column(String(128))
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(128))
 
     provider: Mapped[str] = mapped_column(String(40), nullable=False)
     model: Mapped[str] = mapped_column(String(160), nullable=False)
     model_type: Mapped[str] = mapped_column(String(32), nullable=False, default="chat")
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="success")
-    error_code: Mapped[str | None] = mapped_column(String(64))
+    error_code: Mapped[Optional[str]] = mapped_column(String(64))
 
     # Token counts. BigInteger because a single batch embedding call can exceed
     # the 2.1B int4 ceiling when summed in a rollup, and an overflow in a
@@ -315,26 +316,26 @@ class UsageEventRow(Base):
     audio_output_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
 
     # Attribution
-    department_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
-    team_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
-    user_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
-    project: Mapped[str | None] = mapped_column(String(120))
-    feature: Mapped[str | None] = mapped_column(String(120))
-    application: Mapped[str | None] = mapped_column(String(120))
+    department_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True))
+    team_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True))
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True))
+    project: Mapped[Optional[str]] = mapped_column(String(120))
+    feature: Mapped[Optional[str]] = mapped_column(String(120))
+    application: Mapped[Optional[str]] = mapped_column(String(120))
     environment: Mapped[str] = mapped_column(String(32), nullable=False, default="production")
-    customer_id: Mapped[str | None] = mapped_column(String(120))
-    cost_center: Mapped[str | None] = mapped_column(String(64))
+    customer_id: Mapped[Optional[str]] = mapped_column(String(120))
+    cost_center: Mapped[Optional[str]] = mapped_column(String(64))
     tags: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
     # Trace
     latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    time_to_first_token_ms: Mapped[int | None] = mapped_column(Integer)
+    time_to_first_token_ms: Mapped[Optional[int]] = mapped_column(Integer)
     streamed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    parent_request_id: Mapped[str | None] = mapped_column(String(64))
-    agent_run_id: Mapped[str | None] = mapped_column(String(64))
+    parent_request_id: Mapped[Optional[str]] = mapped_column(String(64))
+    agent_run_id: Mapped[Optional[str]] = mapped_column(String(64))
     agent_step: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    conversation_id: Mapped[str | None] = mapped_column(String(64))
+    conversation_id: Mapped[Optional[str]] = mapped_column(String(64))
     conversation_turn: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     rag_chunks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     rag_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -344,10 +345,10 @@ class UsageEventRow(Base):
     gpu_seconds: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False, default=Decimal("0"))
     network_gb: Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False, default=Decimal("0"))
 
-    prompt_template_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
-    prompt_version: Mapped[str | None] = mapped_column(String(40))
+    prompt_template_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True))
+    prompt_version: Mapped[Optional[str]] = mapped_column(String(40))
     #: Hash only — never prompt text. See prompt_optimizer.py on privacy.
-    prompt_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    prompt_fingerprint: Mapped[Optional[str]] = mapped_column(String(64))
     served_from_semantic_cache: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # Resolved cost, denormalised onto the event. See cost_engine.py for why
@@ -359,7 +360,7 @@ class UsageEventRow(Base):
     )
     cache_savings: Mapped[Decimal] = mapped_column(Numeric(20, 10), nullable=False, default=Decimal("0"))
     cost_by_token_class: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    rate_card_version: Mapped[str | None] = mapped_column(String(120))
+    rate_card_version: Mapped[Optional[str]] = mapped_column(String(120))
     is_wasted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, default=dict)
@@ -395,11 +396,11 @@ class UsageRollupDaily(Base):
     id: Mapped[uuid.UUID] = _uuid_pk()
     organization_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     bucket_date: Mapped[datetime] = mapped_column(Date, nullable=False)
-    department_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
-    team_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    department_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True))
+    team_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True))
     provider: Mapped[str] = mapped_column(String(40), nullable=False)
     model: Mapped[str] = mapped_column(String(160), nullable=False)
-    feature: Mapped[str | None] = mapped_column(String(120))
+    feature: Mapped[Optional[str]] = mapped_column(String(120))
     environment: Mapped[str] = mapped_column(String(32), nullable=False, default="production")
 
     request_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
@@ -441,10 +442,10 @@ class BudgetRow(Base, TimestampMixin):
     period: Mapped[str] = mapped_column(String(16), nullable=False, default="monthly")
     alert_thresholds: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     action_at_limit: Mapped[str] = mapped_column(String(32), nullable=False, default="warn")
-    hard_stop_multiplier: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    hard_stop_multiplier: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2))
     rollover: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    owner_email: Mapped[str | None] = mapped_column(String(320))
+    owner_email: Mapped[Optional[str]] = mapped_column(String(320))
 
 
 class PolicyRow(Base, TimestampMixin):
@@ -456,9 +457,9 @@ class PolicyRow(Base, TimestampMixin):
         PGUUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(160), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[Optional[str]] = mapped_column(Text)
     scope: Mapped[str] = mapped_column(String(32), nullable=False, default="organization")
-    scope_id: Mapped[str | None] = mapped_column(String(120))
+    scope_id: Mapped[Optional[str]] = mapped_column(String(120))
     action: Mapped[str] = mapped_column(String(32), nullable=False, default="warn")
     rules: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     fail_closed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -493,13 +494,13 @@ class RecommendationRow(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="open")
     implementation_steps: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     evidence: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     #: Realised saving measured after the change was applied. The gap between
     #: this and `estimated_monthly_savings` is the platform's own accuracy
     #: record, reported openly rather than quietly discarded.
-    realised_monthly_savings: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
-    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    applied_by: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    realised_monthly_savings: Mapped[Optional[Decimal]] = mapped_column(Numeric(20, 4))
+    applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    applied_by: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True))
 
 
 class AnomalyRow(Base, TimestampMixin):
@@ -518,7 +519,7 @@ class AnomalyRow(Base, TimestampMixin):
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     detail: Mapped[str] = mapped_column(Text, nullable=False)
     scope: Mapped[str] = mapped_column(String(48), nullable=False)
-    scope_key: Mapped[str | None] = mapped_column(String(200))
+    scope_key: Mapped[Optional[str]] = mapped_column(String(200))
     observed_value: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False, default=Decimal("0"))
     expected_value: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False, default=Decimal("0"))
     deviation_score: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False, default=Decimal("0"))
@@ -526,8 +527,8 @@ class AnomalyRow(Base, TimestampMixin):
     evidence: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     is_resolved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    resolution_note: Mapped[str | None] = mapped_column(Text)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    resolution_note: Mapped[Optional[str]] = mapped_column(Text)
 
 
 class ForecastRow(Base, TimestampMixin):
@@ -549,7 +550,7 @@ class ForecastRow(Base, TimestampMixin):
     horizon_days: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
     method: Mapped[str] = mapped_column(String(48), nullable=False, default="holt_winters")
     points: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
-    mape: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    mape: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4))
     confidence: Mapped[Decimal] = mapped_column(Numeric(4, 3), nullable=False, default=Decimal("0.8"))
     warnings: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
 
@@ -564,10 +565,10 @@ class PromptTemplate(Base, TimestampMixin):
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(120), nullable=False)
-    owner_team_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
-    feature: Mapped[str | None] = mapped_column(String(120))
-    active_version: Mapped[str | None] = mapped_column(String(40))
-    description: Mapped[str | None] = mapped_column(Text)
+    owner_team_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True))
+    feature: Mapped[Optional[str]] = mapped_column(String(120))
+    active_version: Mapped[Optional[str]] = mapped_column(String(40))
+    description: Mapped[Optional[str]] = mapped_column(Text)
 
 
 class PromptVersion(Base, TimestampMixin):
@@ -591,7 +592,7 @@ class PromptVersion(Base, TimestampMixin):
     )
     version: Mapped[str] = mapped_column(String(40), nullable=False)
     fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
-    body: Mapped[str | None] = mapped_column(Text)
+    body: Mapped[Optional[str]] = mapped_column(Text)
     token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     static_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     efficiency_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0"))
@@ -634,17 +635,17 @@ class AuditLog(Base):
     id: Mapped[uuid.UUID] = _uuid_pk()
     organization_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
-    actor_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
-    actor_email: Mapped[str | None] = mapped_column(String(320))
+    actor_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True))
+    actor_email: Mapped[Optional[str]] = mapped_column(String(320))
     action: Mapped[str] = mapped_column(String(80), nullable=False)
     resource_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    resource_id: Mapped[str | None] = mapped_column(String(120))
+    resource_id: Mapped[Optional[str]] = mapped_column(String(120))
     #: Before/after snapshot for mutations, so a reviewer can reconstruct state
     #: without replaying the whole log.
     changes: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    ip_address: Mapped[str | None] = mapped_column(String(45))
-    user_agent: Mapped[str | None] = mapped_column(String(400))
-    request_id: Mapped[str | None] = mapped_column(String(64))
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45))
+    user_agent: Mapped[Optional[str]] = mapped_column(String(400))
+    request_id: Mapped[Optional[str]] = mapped_column(String(64))
 
 
 class ApprovalRequestRow(Base, TimestampMixin):
@@ -661,11 +662,11 @@ class ApprovalRequestRow(Base, TimestampMixin):
         PGUUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     requester_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
-    approver_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    approver_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True))
     subject: Mapped[str] = mapped_column(String(300), nullable=False)
     estimated_cost: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
     justification: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending")
-    decision_note: Mapped[str | None] = mapped_column(Text)
-    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[Optional[str]] = mapped_column(Text)
+    decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))

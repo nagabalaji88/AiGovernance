@@ -12,6 +12,17 @@ recommendation that would make answers worse.
 
 ---
 
+## Requirements
+
+Python **3.9 – 3.13** (CI tests both ends of that range) and Node 22.
+
+> **Note on Python 3.9:** 3.9 reached end-of-life in October 2025 and no longer
+> receives security patches. It is supported here because the deployment target
+> requires it, but for a platform making SOC 2 / ISO 27001 claims the
+> interpreter itself is part of the audit surface. Moving the floor to 3.11
+> would also let the `Optional[...]` annotations revert to `X | None` and drop
+> the `StrEnum` backport — see `docs/ROADMAP.md`.
+
 ## Run it
 
 No database, no broker, no configuration:

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Optional, Union
 
 from app.domain.money import ZERO, quantize_cost, safe_div, to_decimal
 
@@ -44,7 +45,7 @@ RECALL_CURVE: dict[int, Decimal] = {
 }
 
 
-@dataclass(slots=True)
+@dataclass
 class RagConfig:
     chunk_size: int = 512
     chunk_overlap: int = 64
@@ -74,7 +75,7 @@ class RagConfig:
         return self.chunk_overlap * self.top_k
 
 
-@dataclass(slots=True)
+@dataclass
 class RagOptimization:
     lever: str
     current: str
@@ -132,9 +133,9 @@ def optimize_top_k(
     *,
     input_rate_per_token: Decimal,
     monthly_requests: int,
-    observed_citation_rate: dict[int, Decimal] | None = None,
+    observed_citation_rate: Optional[dict[int, Decimal]] = None,
     max_recall_loss: Decimal = Decimal("0.03"),
-) -> RagOptimization | None:
+) -> Optional[RagOptimization]:
     """Find the smallest k whose estimated recall loss stays within tolerance.
 
     `observed_citation_rate` maps rank position to the share of answers that
@@ -195,7 +196,7 @@ def optimize_overlap(
     *,
     input_rate_per_token: Decimal,
     monthly_requests: int,
-) -> RagOptimization | None:
+) -> Optional[RagOptimization]:
     """Trim excessive chunk overlap.
 
     Overlap exists to stop a semantic unit being split across a boundary. Past
@@ -233,7 +234,7 @@ def optimize_chunk_size(
     input_rate_per_token: Decimal,
     monthly_requests: int,
     avg_answer_span_tokens: int = 180,
-) -> RagOptimization | None:
+) -> Optional[RagOptimization]:
     """Right-size chunks against the length of text answers actually draw on.
 
     If answers typically cite a 180-token span but chunks are 1024 tokens, then
@@ -280,7 +281,7 @@ def recommend_reranker(
     input_rate_per_token: Decimal,
     monthly_requests: int,
     reranker_cost_per_request: Decimal = Decimal("0.0005"),
-) -> RagOptimization | None:
+) -> Optional[RagOptimization]:
     """A reranker lets you over-retrieve cheaply then inject only the best few.
 
     Economics: retrieve k=20 from the vector store (free — it never touches the
@@ -327,7 +328,7 @@ def recommend_embedding_downgrade(
     candidate_rate: Decimal,
     monthly_embedding_tokens: int,
     quality_delta: Decimal = Decimal("-0.02"),
-) -> RagOptimization | None:
+) -> Optional[RagOptimization]:
     """Swap to a cheaper embedding model where retrieval quality permits.
 
     Embedding cost is usually a small share of total spend, so this matters
@@ -361,7 +362,7 @@ def recommend_embedding_downgrade(
     )
 
 
-@dataclass(slots=True)
+@dataclass
 class RagAdvisory:
     config: RagConfig
     optimizations: list[RagOptimization] = field(default_factory=list)
@@ -404,9 +405,9 @@ class RagAdvisory:
 def advise(
     config: RagConfig,
     *,
-    input_rate_per_token: Decimal | float | str,
+    input_rate_per_token: Union[Decimal, float, str],
     monthly_requests: int,
-    observed_citation_rate: dict[int, Decimal] | None = None,
+    observed_citation_rate: Optional[dict[int, Decimal]] = None,
     avg_answer_span_tokens: int = 180,
 ) -> RagAdvisory:
     rate = to_decimal(input_rate_per_token)

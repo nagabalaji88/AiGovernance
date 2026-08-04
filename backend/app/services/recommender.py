@@ -31,8 +31,9 @@ confidence estimate rather than the sum.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Optional
 from uuid import UUID, uuid4
 
 from app.domain.enums import (
@@ -77,7 +78,7 @@ EFFORT_HOURS: dict[str, Decimal] = {
 }
 
 
-@dataclass(slots=True)
+@dataclass
 class Recommendation:
     kind: RecommendationKind
     title: str
@@ -94,12 +95,12 @@ class Recommendation:
     requires_evaluation: bool = False
     implementation_steps: list[str] = field(default_factory=list)
     evidence: dict[str, object] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     #: Recommendations decay: a finding from a workload that has since changed
     #: is worse than useless. Expired ones are re-derived, not resurrected.
-    expires_at: datetime = field(default_factory=lambda: datetime.now(UTC) + timedelta(days=30))
+    expires_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc) + timedelta(days=30))
     blocked_by_quality: bool = False
-    quality_note: str | None = None
+    quality_note: Optional[str] = None
 
     @property
     def annual_savings(self) -> Decimal:
@@ -224,7 +225,7 @@ def from_rag_optimization(opt: RagOptimization, *, scope_key: str) -> Recommenda
 
 def from_routing_decision(
     decision: RoutingDecision, *, scope_key: str, monthly_requests: int
-) -> Recommendation | None:
+) -> Optional[Recommendation]:
     """Turn a router result into a model-downgrade recommendation."""
     if not decision.selected or not decision.baseline:
         return None
@@ -264,7 +265,7 @@ def from_routing_decision(
     )
 
 
-def from_anomaly(anomaly: Anomaly) -> Recommendation | None:
+def from_anomaly(anomaly: Anomaly) -> Optional[Recommendation]:
     """Convert a recurring, structural anomaly into a durable recommendation.
 
     Only structural anomalies convert. A one-off cost spike is an *alert* — it
@@ -310,7 +311,7 @@ def from_anomaly(anomaly: Anomaly) -> Recommendation | None:
     )
 
 
-def from_prompt_analysis(payload: dict[str, object], *, scope_key: str) -> Recommendation | None:
+def from_prompt_analysis(payload: dict[str, object], *, scope_key: str) -> Optional[Recommendation]:
     """Build a recommendation from `prompt_optimizer.suggest_compression` output."""
     monthly = Decimal(str(payload.get("monthly_savings", 0)))
     if monthly < Decimal("10"):
@@ -338,10 +339,10 @@ def from_prompt_analysis(payload: dict[str, object], *, scope_key: str) -> Recom
     )
 
 
-@dataclass(slots=True)
+@dataclass
 class RecommendationBundle:
     recommendations: list[Recommendation] = field(default_factory=list)
-    generated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    generated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def total_monthly_opportunity(self) -> Decimal:
@@ -397,12 +398,12 @@ class RecommendationEngine:
     def build(
         self,
         *,
-        cache_recommendations: list[CacheRecommendation] | None = None,
-        rag_optimizations: list[tuple[str, RagOptimization]] | None = None,
-        routing_decisions: list[tuple[str, RoutingDecision, int]] | None = None,
-        anomalies: list[Anomaly] | None = None,
-        prompt_analyses: list[tuple[str, dict[str, object]]] | None = None,
-        quality_verdicts: dict[str, QualityVerdict] | None = None,
+        cache_recommendations: Optional[list[CacheRecommendation]] = None,
+        rag_optimizations: Optional[list[tuple[str, RagOptimization]]] = None,
+        routing_decisions: Optional[list[tuple[str, RoutingDecision, int]]] = None,
+        anomalies: Optional[list[Anomaly]] = None,
+        prompt_analyses: Optional[list[tuple[str, dict[str, object]]]] = None,
+        quality_verdicts: Optional[dict[str, QualityVerdict]] = None,
     ) -> RecommendationBundle:
         collected: list[Recommendation] = []
 

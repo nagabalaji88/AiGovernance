@@ -18,9 +18,9 @@ is an aggregation over these. Two design decisions dominate:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from app.domain.enums import (
@@ -33,7 +33,7 @@ from app.domain.enums import (
 from app.domain.money import ZERO, to_decimal
 
 
-@dataclass(slots=True)
+@dataclass
 class TokenUsage:
     """Token counts broken out by billable class.
 
@@ -102,7 +102,7 @@ class TokenUsage:
         )
 
 
-@dataclass(slots=True)
+@dataclass
 class AttributionContext:
     """The "who and why" dimensions of a request.
 
@@ -113,16 +113,16 @@ class AttributionContext:
     instrumentation coverage up over time.
     """
 
-    organization_id: UUID | None = None
-    department_id: UUID | None = None
-    team_id: UUID | None = None
-    user_id: UUID | None = None
-    project: str | None = None
-    feature: str | None = None
+    organization_id: Optional[UUID] = None
+    department_id: Optional[UUID] = None
+    team_id: Optional[UUID] = None
+    user_id: Optional[UUID] = None
+    project: Optional[str] = None
+    feature: Optional[str] = None
     environment: str = "production"
-    application: str | None = None
-    customer_id: str | None = None
-    cost_center: str | None = None
+    application: Optional[str] = None
+    customer_id: Optional[str] = None
+    cost_center: Optional[str] = None
     tags: dict[str, str] = field(default_factory=dict)
 
     @property
@@ -130,21 +130,21 @@ class AttributionContext:
         return any((self.department_id, self.team_id, self.cost_center))
 
 
-@dataclass(slots=True)
+@dataclass
 class RequestTrace:
     """Execution characteristics used for quality, latency and waste analysis."""
 
     latency_ms: int = 0
-    time_to_first_token_ms: int | None = None
+    time_to_first_token_ms: Optional[int] = None
     streamed: bool = False
     retry_count: int = 0
     #: Set when this call is a retry of a prior failed attempt; lets the waste
     #: detector distinguish "expensive workload" from "expensive flailing".
-    parent_request_id: str | None = None
+    parent_request_id: Optional[str] = None
     #: Depth in an agent loop. Runaway agents are detected on this.
     agent_step: int = 0
-    agent_run_id: str | None = None
-    conversation_id: str | None = None
+    agent_run_id: Optional[str] = None
+    conversation_id: Optional[str] = None
     conversation_turn: int = 0
     #: Number of RAG chunks injected, and their token weight.
     rag_chunks: int = 0
@@ -157,7 +157,7 @@ class RequestTrace:
     network_gb: Decimal = ZERO
 
 
-@dataclass(slots=True)
+@dataclass
 class UsageEvent:
     """One metered interaction with a model."""
 
@@ -165,19 +165,19 @@ class UsageEvent:
     model: str
     tokens: TokenUsage
     id: UUID = field(default_factory=uuid4)
-    idempotency_key: str | None = None
+    idempotency_key: Optional[str] = None
     model_type: ModelType = ModelType.CHAT
     status: RequestStatus = RequestStatus.SUCCESS
-    occurred_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    occurred_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     attribution: AttributionContext = field(default_factory=AttributionContext)
     trace: RequestTrace = field(default_factory=RequestTrace)
-    prompt_template_id: UUID | None = None
-    prompt_version: str | None = None
-    prompt_fingerprint: str | None = None
+    prompt_template_id: Optional[UUID] = None
+    prompt_version: Optional[str] = None
+    prompt_fingerprint: Optional[str] = None
     #: Whether the platform's own semantic cache served this — distinct from
     #: the provider's prompt cache, which shows up in `tokens.cached_input`.
     served_from_semantic_cache: bool = False
-    error_code: str | None = None
+    error_code: Optional[str] = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -198,7 +198,7 @@ class UsageEvent:
         return self.trace.retry_count > 0 and self.trace.parent_request_id is not None
 
 
-@dataclass(slots=True)
+@dataclass
 class CostBreakdown:
     """Fully-resolved cost of one usage event.
 
@@ -219,8 +219,8 @@ class CostBreakdown:
     #: `total` is the realised saving, which is what funds the caching
     #: programme in front of a CFO.
     uncached_equivalent: Decimal = ZERO
-    rate_card_version: str | None = None
-    priced_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    rate_card_version: Optional[str] = None
+    priced_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def token_cost(self) -> Decimal:
@@ -240,7 +240,7 @@ class CostBreakdown:
         return saving if saving > ZERO else ZERO
 
 
-@dataclass(slots=True)
+@dataclass
 class UsageAggregate:
     """Rolled-up usage over a dimension slice, as served to dashboards."""
 

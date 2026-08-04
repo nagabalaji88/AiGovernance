@@ -24,8 +24,9 @@ from __future__ import annotations
 
 import threading
 from collections import defaultdict
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Optional, Union
 from uuid import UUID, uuid4
 
 from app.api import schemas as s
@@ -138,7 +139,7 @@ class AnalyticsStore:
             idempotency_key=item.idempotency_key,
             model_type=model_type,
             status=request_status,
-            occurred_at=item.occurred_at or datetime.now(UTC),
+            occurred_at=item.occurred_at or datetime.now(timezone.utc),
             attribution=AttributionContext(
                 organization_id=organization_id,
                 department_id=item.attribution.department_id,
@@ -206,7 +207,7 @@ class AnalyticsStore:
 
     def daily_series(self, organization_id: UUID, start: datetime, end: datetime) -> list[s.TimeSeriesPoint]:
         events = self.events_between(organization_id, start, end)
-        buckets: dict[date, dict[str, Decimal | int]] = defaultdict(
+        buckets: dict[date, dict[str, Union[Decimal, int]]] = defaultdict(
             lambda: {"cost": ZERO, "tokens": 0, "requests": 0}
         )
         for event in events:
@@ -259,7 +260,7 @@ class AnalyticsStore:
         Matches the window a monthly budget is evaluated against, so a budget
         sized from this figure produces the utilisation the caller intended.
         """
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         events = self.events_between(organization_id, start, now)
         if department_id is not None:
@@ -293,8 +294,8 @@ class AnalyticsStore:
         start, end = budget.period_bounds()
         events = self.events_between(
             organization_id,
-            datetime.combine(start, datetime.min.time(), tzinfo=UTC),
-            datetime.combine(end, datetime.max.time(), tzinfo=UTC),
+            datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc),
+            datetime.combine(end, datetime.max.time(), tzinfo=timezone.utc),
         )
         matching = [e for e in events if self._matches_scope(e, budget)]
         return sum((self.cost_of(e).total for e in matching), ZERO)
@@ -303,7 +304,7 @@ class AnalyticsStore:
         if budget.scope is BudgetScope.ORGANIZATION:
             return True
         attribution = event.attribution
-        mapping: dict[BudgetScope, str | None] = {
+        mapping: dict[BudgetScope, Optional[str]] = {
             BudgetScope.DEPARTMENT: str(attribution.department_id) if attribution.department_id else None,
             BudgetScope.TEAM: str(attribution.team_id) if attribution.team_id else None,
             BudgetScope.USER: str(attribution.user_id) if attribution.user_id else None,

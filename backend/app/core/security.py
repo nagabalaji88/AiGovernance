@@ -27,8 +27,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
-from datetime import UTC, datetime, timedelta
-from typing import Any
+from datetime import datetime, timedelta, timezone
+from typing import Any, Optional, Union
 from uuid import UUID
 
 from jose import JWTError, jwt
@@ -66,13 +66,13 @@ def create_access_token(
     *,
     subject: str,
     organization_id: str,
-    role: Role | str,
-    extra_claims: dict[str, Any] | None = None,
-    expires_delta: timedelta | None = None,
+    role: Union[Role, str],
+    extra_claims: Optional[dict[str, Any]] = None,
+    expires_delta: Optional[timedelta] = None,
 ) -> tuple[str, str]:
     """Return `(token, jti)`. The jti is retained for revocation."""
     settings = get_settings()
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     expiry = now + (expires_delta or timedelta(minutes=settings.access_token_ttl_minutes))
     jti = secrets.token_urlsafe(16)
     claims: dict[str, Any] = {
@@ -91,7 +91,7 @@ def create_access_token(
 
 def create_refresh_token(*, subject: str, organization_id: str) -> tuple[str, str]:
     settings = get_settings()
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     expiry = now + timedelta(days=settings.refresh_token_ttl_days)
     jti = secrets.token_urlsafe(24)
     claims = {
@@ -166,12 +166,12 @@ class Principal:
         self,
         *,
         organization_id: UUID,
-        user_id: UUID | None = None,
+        user_id: Optional[UUID] = None,
         role: Role = Role.VIEWER,
-        email: str | None = None,
+        email: Optional[str] = None,
         is_service: bool = False,
-        scopes: list[str] | None = None,
-        jti: str | None = None,
+        scopes: Optional[list[str]] = None,
+        jti: Optional[str] = None,
     ) -> None:
         self.organization_id = organization_id
         self.user_id = user_id

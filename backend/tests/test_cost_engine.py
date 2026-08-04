@@ -7,7 +7,7 @@ it reached an invoice.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
@@ -162,27 +162,27 @@ class TestEffectiveDating:
             model="test-model",
             model_type=default_catalog.all_cards()[0].model_type,
             rates={TokenClass.INPUT: Decimal("10")},
-            effective_from=datetime(2025, 1, 1, tzinfo=UTC),
-            effective_to=datetime(2026, 1, 1, tzinfo=UTC),
+            effective_from=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            effective_to=datetime(2026, 1, 1, tzinfo=timezone.utc),
         )
         new = RateCard(
             provider=Provider.OPENAI,
             model="test-model",
             model_type=old.model_type,
             rates={TokenClass.INPUT: Decimal("2")},
-            effective_from=datetime(2026, 1, 1, tzinfo=UTC),
+            effective_from=datetime(2026, 1, 1, tzinfo=timezone.utc),
         )
         engine = CostEngine(catalog=PricingCatalog([old, new]))
 
         historical = make_event(
             model="test-model",
             tokens=TokenUsage(input=1_000_000, output=0),
-            occurred_at=datetime(2025, 6, 1, tzinfo=UTC),
+            occurred_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
         )
         current = make_event(
             model="test-model",
             tokens=TokenUsage(input=1_000_000, output=0),
-            occurred_at=datetime(2026, 6, 1, tzinfo=UTC),
+            occurred_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
         )
         assert engine.price(historical).total == Decimal("10.0000000000")
         assert engine.price(current).total == Decimal("2.0000000000")

@@ -32,6 +32,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Optional, Union
 
 from app.domain.money import ZERO, quantize_cost, safe_div, to_decimal
 
@@ -78,7 +79,7 @@ class Finding:
         tokens_saved: int,
         *,
         confidence: Decimal = Decimal("0.8"),
-        span: tuple[int, int] | None = None,
+        span: Optional[tuple[int, int]] = None,
         severity: str = "medium",
     ) -> None:
         self.kind = kind
@@ -99,7 +100,7 @@ class Finding:
         }
 
 
-@dataclass(slots=True)
+@dataclass
 class PromptAnalysis:
     """Content-free result of analysing one prompt."""
 
@@ -386,7 +387,7 @@ def _deduplicate_savings(findings: list[Finding], total_tokens: int) -> int:
 def analyse_prompt(
     text: str,
     *,
-    exact_token_count: int | None = None,
+    exact_token_count: Optional[int] = None,
     static_prefix_chars: int = 0,
 ) -> PromptAnalysis:
     """Run every detector over one prompt.
@@ -415,7 +416,7 @@ def analyse_prompt(
     )
 
 
-@dataclass(slots=True)
+@dataclass
 class PromptComparison:
     """A/B comparison between two prompt versions."""
 
@@ -490,7 +491,7 @@ def score_prompt(analysis: PromptAnalysis) -> Decimal:
 def suggest_compression(
     analysis: PromptAnalysis,
     *,
-    rate_per_token: Decimal | float | str,
+    rate_per_token: Union[Decimal, float, str],
     monthly_calls: int,
 ) -> dict[str, object]:
     """Package an analysis into a costed, actionable recommendation payload."""

@@ -13,7 +13,7 @@ interface is the seam where the SQL implementation drops in — see
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
 
@@ -57,7 +57,7 @@ _recommender = RecommendationEngine()
 
 
 def _window(days: int) -> tuple[datetime, datetime]:
-    end = datetime.now(UTC)
+    end = datetime.now(timezone.utc)
     return end - timedelta(days=days), end
 
 

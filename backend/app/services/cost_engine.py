@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Optional
 
 from app.domain.enums import SELF_HOSTED_PROVIDERS, Provider, TokenClass
 from app.domain.money import ZERO, quantize_cost
@@ -54,8 +55,8 @@ class CostEngine:
 
     def __init__(
         self,
-        catalog: PricingCatalog | None = None,
-        infra_model: InfrastructureCostModel | None = None,
+        catalog: Optional[PricingCatalog] = None,
+        infra_model: Optional[InfrastructureCostModel] = None,
     ) -> None:
         self.catalog = catalog or default_catalog
         self.infra_model = infra_model or InfrastructureCostModel()
@@ -116,7 +117,7 @@ class CostEngine:
         provider: Provider,
         model: str,
         tokens: TokenUsage,
-        at: datetime | None = None,
+        at: Optional[datetime] = None,
     ) -> Decimal:
         """Cost of a hypothetical call. Backs the simulation engine and the
         pre-flight budget check, where no real event exists yet."""

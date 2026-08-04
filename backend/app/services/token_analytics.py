@@ -18,8 +18,8 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from decimal import Decimal
-from itertools import pairwise
 from statistics import median
+from typing import Optional, Union
 
 from app.domain.money import ZERO, safe_div, to_decimal
 from app.domain.usage import CostBreakdown, UsageEvent
@@ -37,7 +37,7 @@ PROMPT_REGIONS = (
 )
 
 
-@dataclass(slots=True)
+@dataclass
 class TokenDistribution:
     """Percentile view of a token count population.
 
@@ -82,7 +82,7 @@ class TokenDistribution:
         )
 
 
-@dataclass(slots=True)
+@dataclass
 class PromptComposition:
     """Average decomposition of the prompt side of a call."""
 
@@ -117,7 +117,7 @@ class PromptComposition:
         return {r: self.share(r) for r in regions}
 
 
-@dataclass(slots=True)
+@dataclass
 class ContextEfficiency:
     """How well a workload uses the context window it pays for."""
 
@@ -133,7 +133,7 @@ class ContextEfficiency:
     growth_per_turn: Decimal = ZERO
 
 
-@dataclass(slots=True)
+@dataclass
 class DimensionSlice:
     """Aggregated metrics for one value of a grouping dimension."""
 
@@ -168,10 +168,10 @@ class DimensionSlice:
         return safe_div(Decimal(self.completion_tokens), Decimal(self.total_tokens))
 
 
-@dataclass(slots=True)
+@dataclass
 class TokenAnalyticsReport:
-    window_start: str | None = None
-    window_end: str | None = None
+    window_start: Optional[str] = None
+    window_end: Optional[str] = None
     prompt_distribution: TokenDistribution = field(default_factory=TokenDistribution)
     completion_distribution: TokenDistribution = field(default_factory=TokenDistribution)
     context_distribution: TokenDistribution = field(default_factory=TokenDistribution)
@@ -198,7 +198,7 @@ class TokenAnalyticsReport:
 
 #: Grouping functions for the standard dimension set. Adding a dimension is a
 #: one-line change here plus a UI facet — the aggregation code is generic.
-DIMENSION_EXTRACTORS: dict[str, Callable[[UsageEvent], str | None]] = {
+DIMENSION_EXTRACTORS: dict[str, Callable[[UsageEvent], Optional[str]]] = {
     "provider": lambda e: str(e.provider),
     "model": lambda e: f"{e.provider}/{e.model}",
     "model_type": lambda e: str(e.model_type),
@@ -218,7 +218,7 @@ DIMENSION_EXTRACTORS: dict[str, Callable[[UsageEvent], str | None]] = {
 
 def analyse(
     events: list[UsageEvent],
-    costs: dict[str, CostBreakdown] | list[CostBreakdown],
+    costs: Union[dict[str, CostBreakdown], list[CostBreakdown]],
     *,
     dimensions: Iterable[str] = ("provider", "model", "department", "team", "feature"),
     window_size: int = 0,
@@ -358,7 +358,7 @@ def _conversation_growth(samples: list[tuple[int, int]]) -> Decimal:
 
 def token_heatmap(
     events: list[UsageEvent],
-    costs: dict[str, CostBreakdown] | list[CostBreakdown],
+    costs: Union[dict[str, CostBreakdown], list[CostBreakdown]],
     *,
     row_dimension: str = "team",
     column_dimension: str = "model",
@@ -385,7 +385,7 @@ def token_heatmap(
 
 def cost_flow(
     events: list[UsageEvent],
-    costs: dict[str, CostBreakdown] | list[CostBreakdown],
+    costs: Union[dict[str, CostBreakdown], list[CostBreakdown]],
     *,
     stages: tuple[str, ...] = ("department", "team", "provider", "model"),
 ) -> list[dict[str, object]]:
@@ -402,7 +402,7 @@ def cost_flow(
             f"{stage}:{(DIMENSION_EXTRACTORS.get(stage, lambda _e: None)(event) or 'unattributed')}"
             for stage in stages
         ]
-        for source, target in pairwise(path):
+        for source, target in zip(path, path[1:]):
             links[(source, target)] += cost.total
     return [
         {"source": s, "target": t, "value": float(v)}
@@ -411,7 +411,7 @@ def cost_flow(
 
 
 def _index_costs(
-    costs: dict[str, CostBreakdown] | list[CostBreakdown],
+    costs: Union[dict[str, CostBreakdown], list[CostBreakdown]],
 ) -> dict[str, CostBreakdown]:
     if isinstance(costs, dict):
         return costs
@@ -438,7 +438,7 @@ def top_waste_sources(
 
 
 def compression_savings(
-    original_tokens: int, compressed_tokens: int, rate_per_token: Decimal | float | str
+    original_tokens: int, compressed_tokens: int, rate_per_token: Union[Decimal, float, str]
 ) -> Decimal:
     """Dollar value of a prompt-compression opportunity."""
     saved = max(0, original_tokens - compressed_tokens)

@@ -131,6 +131,27 @@ negotiation from a hope into a position.
 **Columnar analytics tier.** ClickHouse for rollups above 100M events/day, with
 Postgres retaining governance state where transactional guarantees matter.
 
+### Raising the Python floor
+
+The backend targets Python 3.9 because the deployment environment requires it.
+That costs three things, all reversible the day the floor moves to 3.11:
+
+- **`Optional[X]` instead of `X | None`** throughout. `from __future__ import
+  annotations` is not sufficient, because Pydantic, SQLAlchemy's `Mapped[]` and
+  FastAPI evaluate their annotations at runtime rather than leaving them as
+  strings. Ruff's `UP007`/`UP045` are disabled for exactly this reason.
+- **A `StrEnum` backport** in `domain/enums.py`. Verified byte-identical to the
+  3.11 built-in across `str()`, f-strings, `format()`, concatenation, dict keys
+  and `json.dumps`, but it is still code that exists only to paper over a
+  version gap.
+- **No `dataclass(slots=True)`**, which cost a small amount of memory and
+  attribute-access speed on the hot ingestion path.
+
+3.9 is also past end-of-life (October 2025), so it receives no security
+patches — relevant given the compliance posture in `docs/SECURITY.md`. Raising
+the floor is a mechanical change and should be taken as soon as the target
+environment allows.
+
 ### Deliberately not planned
 
 - **A proxy that sits in the inference path.** Several competitors do this. It
