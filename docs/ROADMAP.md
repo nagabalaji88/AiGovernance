@@ -147,10 +147,34 @@ That costs three things, all reversible the day the floor moves to 3.11:
 - **No `dataclass(slots=True)`**, which cost a small amount of memory and
   attribute-access speed on the hot ingestion path.
 
-3.9 is also past end-of-life (October 2025), so it receives no security
-patches — relevant given the compliance posture in `docs/SECURITY.md`. Raising
-the floor is a mechanical change and should be taken as soon as the target
-environment allows.
+### The measurable cost of the 3.9 floor
+
+3.9 is past end-of-life (October 2025), but the sharper problem is downstream:
+**the patched releases of our own dependencies no longer support it.** Auditing
+the identical dependency closure on each interpreter:
+
+| Interpreter | Advisories in the project closure |
+|---|---|
+| Python 3.9 | **13** across 7 packages |
+| Python 3.11 | **1** (`ecdsa`, unfixable, documented, allowlisted) |
+
+The twelve extra are not theoretical and not fixable by pinning, because every
+patched version requires >= 3.10:
+
+- **starlette 0.49.3 — five advisories.** Two concern host/path validation
+  where `request.url` is rebuilt from an unvalidated `Host` header, which can
+  lead to authentication bypass in code that trusts the reconstructed URL; one
+  is an unbounded urlencoded form-parsing DoS. Fixes land in starlette 1.0.1
+  through 1.3.1 — all of which require Python >= 3.10. FastAPI additionally
+  pins `starlette<1.0.0`, so even on 3.10 this needs a FastAPI bump.
+- **orjson, click, python-dotenv** — one each, all patched only on >= 3.10.
+
+The CI security job is left failing on these rather than allowlisted. A green
+check bought by suppressing a dozen unpatchable CVEs is worse than a red one,
+because it converts a known risk into an invisible one.
+
+Raising the floor to 3.11 is otherwise a mechanical change and resolves all
+twelve.
 
 ### Deliberately not planned
 

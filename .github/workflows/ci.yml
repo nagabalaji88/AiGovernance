@@ -156,15 +156,22 @@ jobs:
       - name: Audit Python dependencies
         working-directory: backend
         run: |
-          # Audit an isolated venv containing only this project's dependency
-          # closure. Auditing the ambient environment instead would fail on
-          # advisories in the runner's own build tooling — packages we neither
-          # declare nor ship — and a gate that is red for reasons nobody can
-          # act on is a gate people learn to bypass.
+          # Two venvs, deliberately. The project goes in one; pip-audit goes in
+          # the other and inspects the first via --path.
+          #
+          # Installing pip-audit *alongside* the project (the obvious approach,
+          # and what this job did first) silently adds 23 packages of its own —
+          # requests, urllib3, filelock, msgpack and friends — and then reports
+          # their advisories as though they were ours. The gate spent a full run
+          # failing on vulnerabilities in the auditing tool itself.
+          python -m venv /tmp/projenv
           python -m venv /tmp/auditenv
-          /tmp/auditenv/bin/pip install --upgrade --quiet pip setuptools wheel
-          /tmp/auditenv/bin/pip install --quiet .
+          /tmp/projenv/bin/pip install --upgrade --quiet pip setuptools wheel
+          /tmp/projenv/bin/pip install --quiet .
           /tmp/auditenv/bin/pip install --quiet pip-audit
+
+          SITE=$(/tmp/projenv/bin/python -c \
+            "import sysconfig; print(sysconfig.get_paths()['purelib'])")
 
           # PYSEC-2026-1325 (ecdsa): no fixed version exists — the maintainers
           # treat constant-time operation as out of scope for a pure-Python
@@ -172,7 +179,15 @@ jobs:
           # affected ECDSA path is unused: tokens are signed with HS256 (HMAC),
           # set in core/config.py. Revisit if JWT_ALGORITHM moves to an ES*
           # curve, and see the follow-up note on replacing python-jose.
-          /tmp/auditenv/bin/python -m pip_audit --desc \
+          #
+          # Nothing else is suppressed. On Python 3.9 this job fails on 12
+          # further advisories (starlette x5, orjson, click, python-dotenv, and
+          # pip/setuptools) for which *no patched release supports 3.9* — every
+          # fix requires >=3.10. That failure is accurate and is left visible on
+          # purpose: allowlisting a dozen unpatchable CVEs to obtain a green
+          # check would hide a real security position behind a tick. See the
+          # Python-floor note in docs/ROADMAP.md.
+          /tmp/auditenv/bin/python -m pip_audit --desc --path "$SITE" \
             --ignore-vuln PYSEC-2026-1325
 
       - name: Audit Node dependencies
