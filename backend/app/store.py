@@ -254,6 +254,51 @@ class AnalyticsStore:
             cursor += timedelta(days=1)
         return {model: [buckets.get(d, ZERO) for d in days] for model, buckets in by_model.items()}
 
+    def daily_token_series_by_model(
+        self, organization_id: UUID, start: datetime, end: datetime
+    ) -> dict[str, list[Decimal]]:
+        """Per-model dense daily token volume, for the token-spike and provider-drift detectors."""
+        events = self.events_between(organization_id, start, end)
+        by_model: dict[str, dict[date, Decimal]] = defaultdict(lambda: defaultdict(lambda: ZERO))
+        for event in events:
+            key = f"{event.provider}/{event.model}"
+            by_model[key][event.occurred_at.date()] += Decimal(event.tokens.total)
+
+        days: list[date] = []
+        cursor = start.date()
+        while cursor <= end.date():
+            days.append(cursor)
+            cursor += timedelta(days=1)
+        return {model: [buckets.get(d, ZERO) for d in days] for model, buckets in by_model.items()}
+
+    def daily_latency_series_by_model(
+        self, organization_id: UUID, start: datetime, end: datetime
+    ) -> dict[str, list[Decimal]]:
+        """Per-model dense daily average latency (ms), for the latency-spike detector.
+
+        Averaged rather than summed: a day's request volume varies independently
+        of whether the provider got slower, and summing would conflate "more
+        traffic" with "slower responses".
+        """
+        events = self.events_between(organization_id, start, end)
+        sums: dict[str, dict[date, int]] = defaultdict(lambda: defaultdict(int))
+        counts: dict[str, dict[date, int]] = defaultdict(lambda: defaultdict(int))
+        for event in events:
+            key = f"{event.provider}/{event.model}"
+            day = event.occurred_at.date()
+            sums[key][day] += event.trace.latency_ms
+            counts[key][day] += 1
+
+        days: list[date] = []
+        cursor = start.date()
+        while cursor <= end.date():
+            days.append(cursor)
+            cursor += timedelta(days=1)
+        return {
+            model: [safe_div(Decimal(sums[model].get(d, 0)), Decimal(counts[model].get(d, 0))) for d in days]
+            for model in sums
+        }
+
     def month_to_date_spend(self, organization_id: UUID, *, department_id: UUID | None = None) -> Decimal:
         """Spend so far in the current calendar month, optionally per department.
 

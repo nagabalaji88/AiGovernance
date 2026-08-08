@@ -68,7 +68,7 @@ Ordered by expected damage, not probability.
 | R9 | **Recommendation savings over-promised** | M | Medium | Realised savings measured post-application and published as a metric; de-overlapped savings; conservative confidence | Product |
 | R10 | **Postgres becomes the write bottleneck** | M | Medium | Partitioning, rollups, read replicas; ClickHouse migration path defined at 100M events/day | Platform |
 | R11 | **Semantic cache returns a wrong answer** | L | High | 0.97 default threshold, per-prompt opt-in, shadow-run before serving, never recommended for entity-varying queries | AI Lead |
-| R12 | **Key-person dependency on the costing logic** | M | Low | Engines are pure functions with decision records in-module; 176 tests document intended behaviour | Eng Lead |
+| R12 | **Key-person dependency on the costing logic** | M | Low | Engines are pure functions with decision records in-module; 210 tests document intended behaviour | Eng Lead |
 
 ### Risks explicitly accepted
 

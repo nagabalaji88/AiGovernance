@@ -619,8 +619,16 @@ async def list_anomalies(
     start, end = _window(days)
     events = store.events_between(principal.organization_id, start, end)
     costs = store.costs_for(events)
-    series = store.daily_cost_series_by_model(principal.organization_id, start, end)
-    findings = anomaly_service.detect_all(events, costs, daily_cost_series=series)
+    cost_series = store.daily_cost_series_by_model(principal.organization_id, start, end)
+    token_series = store.daily_token_series_by_model(principal.organization_id, start, end)
+    latency_series = store.daily_latency_series_by_model(principal.organization_id, start, end)
+    findings = anomaly_service.detect_all(
+        events,
+        costs,
+        daily_cost_series=cost_series,
+        daily_token_series=token_series,
+        daily_latency_series=latency_series,
+    )
 
     order = ["info", "low", "medium", "high", "critical"]
     floor = order.index(min_severity) if min_severity in order else 0

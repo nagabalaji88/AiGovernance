@@ -163,7 +163,7 @@ backend/
     db/            SQLAlchemy models, partitioning strategy
     workers/       Celery tasks and beat schedule
     store.py       In-memory analytics store (the repository contract)
-  tests/           176 tests
+  tests/           210 tests
 frontend/
   src/
     pages/         Five role-specific dashboards
@@ -180,7 +180,7 @@ docs/              Architecture, API, security, operations, roadmap
 ## Testing
 
 ```bash
-make test     # 176 tests with coverage
+make test     # 210 tests with coverage
 make check    # everything CI runs
 ```
 

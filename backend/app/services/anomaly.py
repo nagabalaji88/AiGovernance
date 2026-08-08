@@ -28,10 +28,10 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from statistics import median
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 from app.domain.enums import AnomalyKind, RequestStatus, Severity
 from app.domain.money import ZERO, pct_change, quantize_cost, safe_div, to_decimal
@@ -130,8 +130,16 @@ def detect_series_anomaly(
     scope_key: str,
     threshold: Decimal = DEFAULT_Z_THRESHOLD,
     label: str = "cost",
+    unit: str = "",
+    impact_of: Optional[Callable[[Decimal, Decimal], Decimal]] = None,
 ) -> Optional[Anomaly]:
-    """Score the most recent point of a time series against its own history."""
+    """Score the most recent point of a time series against its own history.
+
+    `impact_of(current, expected)` converts the raw deviation into dollars for
+    series that are not already denominated in cost (token counts, latency,
+    unit price) — defaulting to the raw delta, which is correct when `series`
+    is itself a cost series.
+    """
     if len(series) < 5:
         return None
     current, history = series[-1], series[:-1]
@@ -142,14 +150,16 @@ def detect_series_anomaly(
     if score < threshold or current <= expected:
         return None
 
-    impact = quantize_cost(current - expected)
+    raw_impact = impact_of(current, expected) if impact_of else (current - expected)
+    impact = quantize_cost(max(raw_impact, ZERO))
+    observed_text = _usd(current) if label == "cost" else f"{current}{unit}"
+    expected_text = _usd(expected) if label == "cost" else f"{expected}{unit}"
     return Anomaly(
         kind=kind,
-        severity=_severity_for(score, impact if label == "cost" else impact / Decimal("1000")),
+        severity=_severity_for(score, impact),
         title=f"{kind.value.replace('_', ' ').title()} on {scope} {scope_key}",
         detail=(
-            f"Observed {label} {_usd(current) if label == 'cost' else current} against an "
-            f"expected {_usd(expected) if label == 'cost' else expected} "
+            f"Observed {label} {observed_text} against an expected {expected_text} "
             f"({pct_change(current, expected):.1f}% above baseline, robust z={score:.1f})."
         ),
         scope=scope,
@@ -157,7 +167,7 @@ def detect_series_anomaly(
         observed_value=current,
         expected_value=expected,
         deviation_score=score,
-        estimated_impact=impact if label == "cost" else ZERO,
+        estimated_impact=impact,
         evidence={"history_points": len(history), "threshold": float(threshold)},
         recommended_action="Inspect the driving requests and confirm the workload change was intended.",
     )
@@ -469,11 +479,366 @@ def detect_error_bursts(
     return findings
 
 
+def detect_token_spikes(
+    token_series: dict[str, list[Decimal]],
+    cost_series: dict[str, list[Decimal]],
+    *,
+    threshold: Decimal = DEFAULT_Z_THRESHOLD,
+) -> list[Anomaly]:
+    """Token-volume spikes per model, ranked by what the extra tokens cost.
+
+    A token spike that costs almost nothing — a swap to a far cheaper model,
+    say — is not interesting. Impact is estimated from the model's own
+    blended $/token over the observed window, so the finding is ranked by
+    dollars, not by how many tokens moved.
+    """
+
+    def token_impact(unit_cost: Decimal) -> Callable[[Decimal, Decimal], Decimal]:
+        return lambda current, expected: (current - expected) * unit_cost
+
+    findings: list[Anomaly] = []
+    for scope_key, series in token_series.items():
+        costs = cost_series.get(scope_key, [])
+        total_cost = sum(costs, ZERO)
+        total_tokens = sum(series, ZERO)
+        unit_cost = safe_div(total_cost, total_tokens) if total_tokens else ZERO
+
+        finding = detect_series_anomaly(
+            series=series,
+            kind=AnomalyKind.TOKEN_SPIKE,
+            scope="model",
+            scope_key=scope_key,
+            threshold=threshold,
+            label="tokens",
+            unit=" tokens",
+            impact_of=token_impact(unit_cost),
+        )
+        if finding:
+            findings.append(finding)
+    return findings
+
+
+def detect_latency_spikes(
+    latency_series: dict[str, list[Decimal]],
+    *,
+    threshold: Decimal = DEFAULT_Z_THRESHOLD,
+) -> list[Anomaly]:
+    """Elevated average response latency per model.
+
+    Carries no direct dollar impact — a slow provider does not by itself cost
+    more — but latency spikes are frequently the leading indicator of the
+    retry storms and timeouts that do, so severity is driven by the
+    statistical deviation alone.
+    """
+    findings: list[Anomaly] = []
+    for scope_key, series in latency_series.items():
+        finding = detect_series_anomaly(
+            series=series,
+            kind=AnomalyKind.LATENCY_SPIKE,
+            scope="model",
+            scope_key=scope_key,
+            threshold=threshold,
+            label="latency",
+            unit=" ms",
+            impact_of=lambda current, expected: ZERO,
+        )
+        if finding:
+            finding.recommended_action = (
+                "Check provider status; consider failover or a stricter request timeout."
+            )
+            findings.append(finding)
+    return findings
+
+
+def detect_provider_drift(
+    cost_series: dict[str, list[Decimal]],
+    token_series: dict[str, list[Decimal]],
+    *,
+    threshold: Decimal = DEFAULT_Z_THRESHOLD,
+    min_daily_tokens: Decimal = Decimal("1000"),
+) -> list[Anomaly]:
+    """Silent provider price changes, isolated from volume changes.
+
+    Total daily spend rises whenever traffic rises, which is expected and not
+    a drift signal. Dividing by that day's token volume gives $/1k tokens — a
+    figure that should stay flat between rate-card changes — so a jump in it
+    means the provider changed price (or effective discount tier), not that
+    the workload simply grew.
+    """
+
+    def drift_impact(today_tokens: Decimal) -> Callable[[Decimal, Decimal], Decimal]:
+        return lambda current, expected: (current - expected) * safe_div(today_tokens, Decimal("1000"))
+
+    findings: list[Anomaly] = []
+    for scope_key, costs in cost_series.items():
+        tokens = token_series.get(scope_key, [])
+        if len(tokens) != len(costs) or not tokens:
+            continue
+        unit_series = [
+            safe_div(c, t) * Decimal("1000") if t >= min_daily_tokens else ZERO for c, t in zip(costs, tokens)
+        ]
+        if unit_series[-1] == ZERO:
+            continue
+        finding = detect_series_anomaly(
+            series=unit_series,
+            kind=AnomalyKind.PROVIDER_DRIFT,
+            scope="model",
+            scope_key=scope_key,
+            threshold=threshold,
+            label="unit cost",
+            unit="/1k tokens",
+            impact_of=drift_impact(tokens[-1]),
+        )
+        if finding:
+            findings.append(finding)
+    return findings
+
+
+def detect_infinite_loops(
+    events: list[UsageEvent],
+    costs: dict[str, CostBreakdown],
+    *,
+    repeat_threshold: int = 5,
+) -> list[Anomaly]:
+    """Agent runs stuck resending the identical prompt.
+
+    Distinct from `detect_runaway_agents`, which flags runs that are merely
+    deep or expensive — a legitimate long research agent looks the same on
+    those two axes. This instead looks for the mechanical signature of a
+    stuck loop: the exact same prompt fingerprint recurring within one agent
+    run, which only happens when state genuinely is not advancing between
+    steps.
+    """
+    runs: dict[str, dict[str, list[UsageEvent]]] = defaultdict(lambda: defaultdict(list))
+    for event in events:
+        run_id = event.trace.agent_run_id
+        if not run_id or not event.prompt_fingerprint:
+            continue
+        runs[run_id][event.prompt_fingerprint].append(event)
+
+    findings: list[Anomaly] = []
+    for run_id, groups in runs.items():
+        stuck = max(groups.values(), key=len, default=[])
+        if len(stuck) < repeat_threshold:
+            continue
+        spend = sum((costs[str(e.id)].total for e in stuck if str(e.id) in costs), ZERO)
+        findings.append(
+            Anomaly(
+                kind=AnomalyKind.INFINITE_LOOP,
+                severity=_severity_for(Decimal(len(stuck)), spend),
+                title=f"Agent run {run_id[:12]} is repeating an identical call",
+                detail=(
+                    f"The same prompt was sent {len(stuck)} times within one agent run, "
+                    f"costing {_usd(spend)} with no apparent change in state between calls."
+                ),
+                scope="agent_run",
+                scope_key=run_id,
+                observed_value=Decimal(len(stuck)),
+                expected_value=Decimal(repeat_threshold),
+                estimated_impact=quantize_cost(spend),
+                evidence={"repeated_calls": len(stuck), "distinct_prompts": len(groups)},
+                recommended_action=(
+                    "Add a repeated-call guard that aborts the loop when consecutive steps "
+                    "produce the identical prompt."
+                ),
+            )
+        )
+    return findings
+
+
+def detect_prompt_injection_bursts(
+    events: list[UsageEvent],
+    costs: dict[str, CostBreakdown],
+    *,
+    filtered_threshold: int = 10,
+    min_requests: int = 20,
+) -> list[Anomaly]:
+    """Concentrated moderation-filtered requests — the adversarial-probing signal.
+
+    Never inspects prompt content, in keeping with the platform's privacy
+    boundary: the provider's own content filter already made the call, and
+    this only counts how often it fired per scope. A single filtered request
+    is normal; a burst against one user or one feature is someone testing
+    what gets through.
+    """
+    by_scope: dict[str, dict[str, Decimal]] = defaultdict(
+        lambda: {"total": ZERO, "filtered": ZERO, "cost": ZERO}
+    )
+    for event in events:
+        scope_key = str(event.attribution.user_id or event.attribution.feature or "unattributed")
+        entry = by_scope[scope_key]
+        entry["total"] += Decimal("1")
+        if event.status is RequestStatus.FILTERED:
+            entry["filtered"] += Decimal("1")
+            cost = costs.get(str(event.id))
+            if cost:
+                entry["cost"] += cost.total
+
+    findings: list[Anomaly] = []
+    for scope_key, entry in by_scope.items():
+        if entry["total"] < min_requests or entry["filtered"] < filtered_threshold:
+            continue
+        rate = safe_div(entry["filtered"], entry["total"])
+        findings.append(
+            Anomaly(
+                kind=AnomalyKind.PROMPT_INJECTION,
+                severity=_severity_for(rate * Decimal("10"), entry["cost"]),
+                title=f"Repeated content-filtered requests from {scope_key}",
+                detail=(
+                    f"{int(entry['filtered'])} of {int(entry['total']):,} requests were blocked "
+                    f"by the provider's content filter, costing {_usd(entry['cost'])} for "
+                    "content that never reached a user. Consistent with adversarial prompt probing."
+                ),
+                scope="user_or_feature",
+                scope_key=scope_key,
+                observed_value=entry["filtered"],
+                expected_value=Decimal(filtered_threshold),
+                estimated_impact=quantize_cost(entry["cost"]),
+                evidence={"requests": int(entry["total"]), "filtered": int(entry["filtered"])},
+                recommended_action=(
+                    "Review the source for this scope; consider rate-limiting or a stricter "
+                    "pre-flight policy for repeated filter violations."
+                ),
+            )
+        )
+    return findings
+
+
+def detect_api_abuse(
+    events: list[UsageEvent],
+    costs: dict[str, CostBreakdown],
+    *,
+    window_seconds: int = 60,
+    request_threshold: int = 120,
+) -> list[Anomaly]:
+    """Abnormal request rate from a single identity — key sharing, scraping, credential stuffing.
+
+    A sliding window over per-user timestamps, not a flat daily count: 120
+    requests spread over a day is unremarkable, the same 120 in one minute is
+    not, and only the second pattern indicates automated abuse rather than
+    heavy legitimate usage.
+    """
+    by_user: dict[str, list[UsageEvent]] = defaultdict(list)
+    for event in events:
+        raw_user_id = event.attribution.user_id
+        if raw_user_id:
+            by_user[str(raw_user_id)].append(event)
+
+    findings: list[Anomaly] = []
+    window = timedelta(seconds=window_seconds)
+    for user_id, user_events in by_user.items():
+        user_events.sort(key=lambda e: e.occurred_at)
+        left = 0
+        peak = 0
+        peak_slice: list[UsageEvent] = []
+        for right in range(len(user_events)):
+            while user_events[right].occurred_at - user_events[left].occurred_at > window:
+                left += 1
+            count = right - left + 1
+            if count > peak:
+                peak = count
+                peak_slice = user_events[left : right + 1]
+        if peak < request_threshold:
+            continue
+        spend = sum((costs[str(e.id)].total for e in peak_slice if str(e.id) in costs), ZERO)
+        findings.append(
+            Anomaly(
+                kind=AnomalyKind.API_ABUSE,
+                severity=_severity_for(Decimal(peak) / Decimal("10"), spend),
+                title=f"Abnormal request rate from user {user_id[:12]}",
+                detail=(
+                    f"{peak} requests within {window_seconds} seconds, costing {_usd(spend)}. "
+                    "Consistent with a shared key, a scraping loop, or credential stuffing."
+                ),
+                scope="user",
+                scope_key=user_id,
+                observed_value=Decimal(peak),
+                expected_value=Decimal(request_threshold),
+                estimated_impact=quantize_cost(spend),
+                evidence={"window_seconds": window_seconds, "peak_requests": peak},
+                recommended_action=(
+                    "Rate-limit this identity and verify the API key has not been shared or leaked."
+                ),
+            )
+        )
+    return findings
+
+
+def detect_rag_misconfiguration(
+    events: list[UsageEvent],
+    costs: dict[str, CostBreakdown],
+    *,
+    ratio_threshold: Decimal = Decimal("0.7"),
+    min_requests: int = 20,
+) -> list[Anomaly]:
+    """RAG context dominating the prompt — the top_k/chunk_size-too-high signature.
+
+    When retrieved chunks make up most of what the model reads, on average,
+    across a feature, that is usually over-retrieval rather than a genuinely
+    context-hungry task: `top_k` or `chunk_size` set generously "to be safe"
+    and never tuned down once retrieval quality was confirmed acceptable at a
+    smaller value.
+    """
+    by_feature: dict[str, dict[str, Decimal]] = defaultdict(
+        lambda: {"requests": ZERO, "rag_tokens": ZERO, "prompt_tokens": ZERO, "cost": ZERO}
+    )
+    for event in events:
+        if event.trace.rag_chunks <= 0:
+            continue
+        scope_key = event.attribution.feature or event.attribution.application or "unattributed"
+        entry = by_feature[scope_key]
+        entry["requests"] += Decimal("1")
+        entry["rag_tokens"] += Decimal(event.trace.rag_tokens)
+        entry["prompt_tokens"] += Decimal(event.tokens.prompt_side)
+        cost = costs.get(str(event.id))
+        if cost:
+            entry["cost"] += cost.total
+
+    findings: list[Anomaly] = []
+    for scope_key, entry in by_feature.items():
+        if entry["requests"] < min_requests or entry["prompt_tokens"] == ZERO:
+            continue
+        ratio = safe_div(entry["rag_tokens"], entry["prompt_tokens"])
+        if ratio < ratio_threshold:
+            continue
+        # Cost attributable to the RAG share beyond the threshold — a
+        # conservative "how much of this looks like over-retrieval" estimate,
+        # not the full RAG cost, since some retrieval is always necessary.
+        excess_ratio = ratio - ratio_threshold
+        recoverable = entry["cost"] * safe_div(excess_ratio, ratio) if ratio > ZERO else ZERO
+        if recoverable < Decimal("1"):
+            continue
+        findings.append(
+            Anomaly(
+                kind=AnomalyKind.RAG_MISCONFIGURATION,
+                severity=_severity_for(ratio * Decimal("10"), recoverable),
+                title=f"RAG context dominates prompts in '{scope_key}'",
+                detail=(
+                    f"Retrieved context is {ratio * 100:.0f}% of prompt tokens on average across "
+                    f"{int(entry['requests']):,} requests, costing {_usd(entry['cost'])} of which "
+                    f"~{_usd(recoverable)} looks recoverable by tuning top_k or chunk_size."
+                ),
+                scope="feature",
+                scope_key=scope_key,
+                observed_value=ratio * Decimal("100"),
+                expected_value=ratio_threshold * Decimal("100"),
+                estimated_impact=quantize_cost(recoverable),
+                evidence={"requests": int(entry["requests"]), "avg_rag_ratio": float(ratio)},
+                recommended_action=(
+                    "Reduce top_k or chunk_size and re-validate answer quality at the smaller value."
+                ),
+            )
+        )
+    return findings
+
+
 def detect_all(
     events: list[UsageEvent],
     costs: Union[dict[str, CostBreakdown], list[CostBreakdown]],
     *,
     daily_cost_series: Optional[dict[str, list[Decimal]]] = None,
+    daily_token_series: Optional[dict[str, list[Decimal]]] = None,
+    daily_latency_series: Optional[dict[str, list[Decimal]]] = None,
 ) -> list[Anomaly]:
     """Run the full detector suite and return findings ranked by impact.
 
@@ -488,6 +853,10 @@ def detect_all(
     findings.extend(detect_context_explosion(events, cost_map))
     findings.extend(detect_duplicate_requests(events, cost_map))
     findings.extend(detect_error_bursts(events, cost_map))
+    findings.extend(detect_infinite_loops(events, cost_map))
+    findings.extend(detect_prompt_injection_bursts(events, cost_map))
+    findings.extend(detect_api_abuse(events, cost_map))
+    findings.extend(detect_rag_misconfiguration(events, cost_map))
 
     for scope_key, series in (daily_cost_series or {}).items():
         finding = detect_series_anomaly(
@@ -498,6 +867,13 @@ def detect_all(
         )
         if finding:
             findings.append(finding)
+
+    if daily_token_series:
+        findings.extend(detect_token_spikes(daily_token_series, daily_cost_series or {}))
+        if daily_cost_series:
+            findings.extend(detect_provider_drift(daily_cost_series, daily_token_series))
+    if daily_latency_series:
+        findings.extend(detect_latency_spikes(daily_latency_series))
 
     findings.sort(key=lambda a: a.estimated_impact, reverse=True)
     return findings

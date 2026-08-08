@@ -12,7 +12,7 @@ A complete, ready-to-deploy version of the AI Cost Intelligence & Token Optimiza
 - Complete frontend (React with Vite)
 - All documentation (architecture, API, security, operations, roadmap)
 - Kubernetes manifests and infrastructure configs
-- 176 comprehensive tests
+- 210 comprehensive tests
 - CI/CD pipeline configuration
 
 ### What's Excluded
@@ -62,7 +62,7 @@ This release includes all changes necessary to run on Python 3.9:
 
 5. **Run tests:**
    ```bash
-   make test       # 176 tests with coverage
+   make test       # 210 tests with coverage
    make check      # all CI checks (lint, types, tests, security, bundle size)
    ```
 

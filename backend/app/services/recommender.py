@@ -284,6 +284,12 @@ def from_anomaly(anomaly: Anomaly) -> Optional[Recommendation]:
             "low",
         ),
         AnomalyKind.RUNAWAY_AGENT: (RecommendationKind.RETRY_POLICY, "code_change", "low"),
+        AnomalyKind.INFINITE_LOOP: (RecommendationKind.RETRY_POLICY, "code_change", "low"),
+        AnomalyKind.RAG_MISCONFIGURATION: (
+            RecommendationKind.RAG_TOPK_REDUCTION,
+            "config_change",
+            "low",
+        ),
     }
     entry = mapping.get(anomaly.kind)
     if entry is None:
