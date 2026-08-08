@@ -2,7 +2,7 @@
 
 ## AiGovernance Python 3.9-Compatible Release
 
-**File:** `AiGovernance-python39-ready.zip` (1.5 MB)
+**File:** `AiGovernance-python39-ready.zip` (~280 KB, source only)
 
 A complete, ready-to-deploy version of the AI Cost Intelligence & Token Optimization Platform with full Python 3.9 compatibility.
 
@@ -18,10 +18,10 @@ A complete, ready-to-deploy version of the AI Cost Intelligence & Token Optimiza
 ### What's Excluded
 
 - `.git` directory (start fresh with `git init` or clone the repo)
-- Build artifacts (`__pycache__`, `.pytest_cache`, `dist`, `build`)
-- Node and pip caches
-- Credentials and `.env` files
-- Large compiled assets (use `make install` to rebuild)
+- Build artifacts (`__pycache__`, `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `dist`, `build`)
+- Node and pip caches, `node_modules`
+- Credentials and `.env` files (`.env.example` templates are included)
+- Compiled frontend assets — run `make install` to rebuild
 
 ### Python 3.9 Compatibility Changes
 
@@ -111,6 +111,6 @@ For issues, questions, or contributions, see the repository's issue tracker or c
 
 ---
 
-**Last Updated:** 2026-08-04  
+**Last Updated:** 2026-08-08  
 **Python Support:** 3.9–3.13  
 **Node Support:** 22+
