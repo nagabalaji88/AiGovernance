@@ -1,0 +1,123 @@
+# Local development stack.
+#
+# Brings up the full production topology — Postgres, Redis, API, worker,
+# frontend, Prometheus, Grafana — so behaviour that only appears under real
+# infrastructure (connection pooling, partition creation, worker scheduling) is
+# reproducible locally rather than discovered in staging.
+#
+# For a zero-dependency run, `make dev` starts the API alone with the in-memory
+# store and synthetic data.
+
+name: aicost
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: aicost
+      POSTGRES_PASSWORD: aicost
+      POSTGRES_DB: aicost
+      # C collation makes text comparisons and index scans measurably faster,
+      # and this schema has no natural-language sorting requirement.
+      POSTGRES_INITDB_ARGS: "--data-checksums --locale=C --encoding=UTF8"
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    command:
+      # Tuned for a development box, not production. shared_buffers at 25% of
+      # container memory, and a work_mem that suits the aggregation queries the
+      # dashboards issue without risking OOM at low concurrency.
+      - postgres
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - work_mem=32MB
+      - -c
+      - max_connections=200
+      - -c
+      - random_page_cost=1.1
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aicost -d aicost"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    # Budget counters are a cache, not a ledger: losing them costs a brief
+    # window of enforcement accuracy, not money. allkeys-lru with a hard cap
+    # means Redis degrades under pressure instead of being OOM-killed.
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --save ""
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ./backend
+      target: runtime
+    environment:
+      ENVIRONMENT: local
+      DATABASE_URL: postgresql+asyncpg://aicost:aicost@postgres:5432/aicost
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      SECRET_KEY: local-development-secret-not-for-production
+      LOG_FORMAT: console
+      SEED_DEMO_DATA: "true"
+      WEB_CONCURRENCY: "2"
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  worker:
+    build:
+      context: ./backend
+      target: runtime
+    environment:
+      ENVIRONMENT: local
+      DATABASE_URL: postgresql+asyncpg://aicost:aicost@postgres:5432/aicost
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      SECRET_KEY: local-development-secret-not-for-production
+      LOG_FORMAT: console
+    command: celery -A app.workers.celery_app worker --beat --loglevel=info --concurrency=2
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  frontend:
+    build:
+      context: ./frontend
+      target: runtime
+    ports: ["5173:8080"]
+    depends_on: [api]
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    ports: ["9090:9090"]
+    volumes:
+      - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    ports: ["3000:3000"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./infra/observability/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    depends_on: [prometheus]
+
+volumes:
+  pgdata:

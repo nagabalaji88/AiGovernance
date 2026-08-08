@@ -1,0 +1,84 @@
+[project]
+name = "aicost-platform"
+version = "1.0.0"
+description = "AI Cost Intelligence & Token Optimization Platform - backend services"
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "redis>=5.2",
+    "celery>=5.4",
+    "httpx>=0.28",
+    "python-jose[cryptography]>=3.3",
+    "passlib[bcrypt]>=1.7.4",
+    "structlog>=24.4",
+    "prometheus-client>=0.21",
+    "opentelemetry-api>=1.28",
+    "opentelemetry-sdk>=1.28",
+    "opentelemetry-instrumentation-fastapi>=0.49b0",
+    "numpy>=1.26,<2.1",  # 2.1 dropped Python 3.9
+    "orjson>=3.10",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "types-python-dateutil",
+    "locust>=2.32",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+# 110 rather than the usual 88/100: several modules carry decision-record
+# docstrings with comparison tables, and hard-wrapping those makes them less
+# readable than the line length saves.
+line-length = 110
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
+ignore = [
+    # FastAPI's Depends()/Query() defaults are the framework's intended idiom.
+    "B008",
+    # Mutable class attributes are safe on the frozen/slots dataclasses here.
+    "RUF012",
+    # `PermissionDenied` reads better than `PermissionDeniedError` and matches
+    # the convention used by every major Python web framework.
+    "N818",
+    # UP007/UP045 push `Optional[X]` back to `X | None`. Correct for annotations
+    # that are only ever strings — but Pydantic, SQLAlchemy's `Mapped[]` and
+    # FastAPI all call `get_type_hints()` and *evaluate* theirs, and on 3.9
+    # `str | None` raises `TypeError: unsupported operand type(s) for |`.
+    # `from __future__ import annotations` does not save those call sites, which
+    # is precisely what ruff's heuristic assumes. Applying these fixes would
+    # silently break every model in the project on the minimum supported
+    # interpreter, so they stay off until the floor moves to 3.10.
+    "UP007",
+    "UP045",
+]
+
+[tool.mypy]
+python_version = "3.9"
+warn_unused_ignores = true
+disallow_untyped_defs = true
+plugins = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers"

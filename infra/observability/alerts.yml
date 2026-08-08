@@ -1,0 +1,172 @@
+# Alerting rules.
+#
+# Every rule here must satisfy one test: **would a human, woken at 3am, have
+# something to do about it?** Rules that fail that test are recording rules or
+# dashboard panels, not alerts. This is why there is no "CPU above 80%" rule —
+# the HPA already handles it, and paging a human to watch autoscaling work is
+# how on-call rotations get ignored.
+#
+# Alerts are split into two severities with different routing:
+#   page    -> wakes the on-call engineer
+#   ticket  -> files a work item, reviewed in business hours
+
+groups:
+  - name: aicost-availability
+    interval: 30s
+    rules:
+      - alert: ApiDown
+        expr: up{job="aicost-api"} == 0
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "API instance {{ $labels.instance }} is unreachable"
+          runbook: https://runbooks.example.com/aicost/api-down
+
+      - alert: HighErrorRate
+        # Ratio of 5xx to all requests. Rate over 5m rather than a raw counter
+        # so a burst during a deploy does not fire, but a sustained failure does.
+        expr: |
+          sum(rate(http_requests_total{job="aicost-api",status=~"5.."}[5m]))
+            / sum(rate(http_requests_total{job="aicost-api"}[5m])) > 0.02
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "API 5xx rate above 2% for 5 minutes"
+          runbook: https://runbooks.example.com/aicost/high-error-rate
+
+      - alert: DashboardLatencyBreach
+        # p95 against the 200ms dashboard SLO, with headroom before paging.
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(http_request_duration_seconds_bucket{job="aicost-api"}[5m])) by (le)
+          ) > 0.5
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Dashboard p95 latency above 500ms (SLO is 200ms)"
+
+  - name: aicost-governance
+    interval: 30s
+    rules:
+      - alert: PolicyEvaluationSlow
+        # The pre-flight path has a 5ms p99 budget. Past that, teams disable
+        # the SDK's enforcement hook and the platform stops governing anything
+        # — a silent failure that looks like success on every dashboard.
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum(rate(aicost_policy_evaluation_seconds_bucket[5m])) by (le)
+          ) > 0.005
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "Pre-flight policy evaluation p99 above the 5ms budget"
+          description: >-
+            Teams disable enforcement when it adds latency to inference calls.
+            Check Redis latency and the budget-counter cache hit rate.
+
+      - alert: UnpricedEventsDetected
+        # Any sustained non-zero rate means the pricing catalog is stale and
+        # spend is being under-reported — the platform is quietly lying.
+        expr: sum(rate(aicost_unpriced_events_total[15m])) > 0
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Events arriving with no matching rate card"
+          description: >-
+            Provider {{ $labels.provider }} model {{ $labels.model }} has no
+            effective rate card. Spend for it is being recorded as zero. Run
+            the pricing sync and add the model to the catalog.
+
+      - alert: BudgetExhausted
+        expr: aicost_budget_utilisation_ratio >= 1.0
+        for: 5m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Budget {{ $labels.scope }}/{{ $labels.scope_id }} is exhausted"
+
+      - alert: BudgetNearLimit
+        expr: aicost_budget_utilisation_ratio >= 0.95 < 1.0
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Budget {{ $labels.scope }}/{{ $labels.scope_id }} above 95%"
+
+  - name: aicost-ingestion
+    interval: 30s
+    rules:
+      - alert: IngestionStalled
+        # No events for 10 minutes on a platform whose entire value is
+        # continuous measurement. Almost always an SDK, broker or auth failure.
+        expr: sum(rate(aicost_events_ingested_total[10m])) == 0
+        for: 10m
+        labels: { severity: page }
+        annotations:
+          summary: "No usage events ingested in 10 minutes"
+
+      - alert: IngestionLagHigh
+        # p95 lag beyond an hour means dashboards are materially behind
+        # reality and budget enforcement is acting on stale counters.
+        expr: |
+          histogram_quantile(
+            0.95, sum(rate(aicost_ingest_lag_seconds_bucket[10m])) by (le)
+          ) > 3600
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Ingestion lag p95 above one hour"
+
+  - name: aicost-cost
+    interval: 1m
+    rules:
+      # Cost is an operational signal in this product, so it gets first-class
+      # alerting rather than living only in a dashboard nobody has open.
+      - alert: SpendRateSpike
+        # Current hourly burn against the same hour a week ago — the correct
+        # comparison for a weekly-seasonal series. Comparing to "an hour ago"
+        # fires every weekday morning.
+        expr: |
+          sum(rate(aicost_spend_usd_total[1h]))
+            > 3 * sum(rate(aicost_spend_usd_total[1h] offset 1w))
+        for: 30m
+        labels: { severity: page }
+        annotations:
+          summary: "Spend rate is 3x the same hour last week"
+          description: >-
+            Check the anomaly dashboard for runaway agents, retry storms or a
+            recently deployed workload with no cost ceiling.
+
+      - alert: WastedSpendElevated
+        expr: |
+          sum(rate(aicost_wasted_spend_usd_total[1h]))
+            / sum(rate(aicost_spend_usd_total[1h])) > 0.1
+        for: 30m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Over 10% of spend is going to failed or retried requests"
+
+      - alert: ForecastAccuracyDegraded
+        # Our own forecast quality, monitored openly. A model silently drifting
+        # to uselessness while budgets are still being set from it is worse
+        # than having no forecast at all.
+        expr: aicost_forecast_mape > 40
+        for: 6h
+        labels: { severity: ticket }
+        annotations:
+          summary: "Forecast MAPE above 40% for {{ $labels.scope }}"
+          description: >-
+            Re-fit smoothing parameters, or check whether a structural break
+            (a launch, a migration) has invalidated the history.
+
+      - alert: RecommendationAccuracyPoor
+        # Realised savings well below predicted. Publishing this makes the
+        # platform's claims falsifiable, which is what makes them credible.
+        expr: |
+          histogram_quantile(
+            0.5, sum(rate(aicost_recommendation_accuracy_ratio_bucket[7d])) by (le)
+          ) < 0.5
+        for: 1d
+        labels: { severity: ticket }
+        annotations:
+          summary: "Applied recommendations are delivering under half their predicted savings"
